@@ -15,4 +15,4 @@ jobs:
 
       - name: Push to mohcly/djati-stihl main
         run: |
-          git push "https://x-access-token:${{ secrets.MOHCLY_DEPLOY_TOKEN }}@github.com/mohcly/djati-stihl.git" "HEAD:main" --force
+          git push "https://mohcly:${{ secrets.MOHCLY_DEPLOY_TOKEN }}@github.com/mohcly/djati-stihl.git" "HEAD:main" --force
