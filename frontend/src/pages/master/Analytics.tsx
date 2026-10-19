@@ -70,7 +70,22 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {activeStoreIds.length > 0 ? (
+        {isAllStoresSelected ? (
+          <div className="h-full space-y-8 overflow-y-auto pr-2">
+            <div className="space-y-2">
+              <h2 className="text-sm font-black uppercase tracking-widest text-primary flex items-center gap-2 px-2">
+                <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                {t('sales.allStores') || 'Tous les magasins'}
+              </h2>
+              <div className="h-[600px]">
+                <GestionModule 
+                  storeId="" 
+                  mode={activeTab === 'journal-caisse' ? 'journal-caisse' : activeTab} 
+                />
+              </div>
+            </div>
+          </div>
+        ) : activeStoreIds.length > 0 ? (
           <div className="h-full space-y-8 overflow-y-auto pr-2">
             {activeStoreIds.map(sid => (
               <div key={`analytics-${sid}`} className="space-y-2 border-b-2 pb-8 last:border-0">

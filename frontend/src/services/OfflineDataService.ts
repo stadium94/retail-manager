@@ -453,13 +453,21 @@ class OfflineDataServiceClass {
             return await OfflineAuthService.localBridgeRequest<any[]>(`/rest/v1/cash_transactions?${params.toString()}`, { method: 'GET' });
         }
         try {
-            let query = supabase.from('cash_transactions').select('*').eq('store_id', storeId);
+            let query = supabase.from('cash_transactions').select('*');
+            if (storeId && storeId !== 'all') {
+                query = query.eq('store_id', storeId);
+            }
             if (from) query = query.gte('created_at', from.toISOString());
             const { data, error } = await query;
-            if (error) throw error;
+            if (error) {
+                if (error.code === 'PGRST205') return [];
+                throw error;
+            }
             return data || [];
-        } catch (error) {
-            console.error('getCashTransactions cloud error:', error);
+        } catch (error: any) {
+            if (error?.code !== 'PGRST205') {
+                console.warn('getCashTransactions cloud note:', error?.message || error);
+            }
             return [];
         }
     }

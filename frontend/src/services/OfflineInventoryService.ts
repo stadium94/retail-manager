@@ -534,8 +534,45 @@ export const OfflineInventoryService = {
           if (res.ok) return await res.json();
         }
       }
+
+      // Pure Cloud mode online fetching from Supabase
+      if (!dc.isLocalFirst && navigator.onLine) {
+        try {
+          let query = supabase.from('products').select('*');
+          if (storeId && storeId !== 'all') {
+            query = query.eq('store_id', storeId);
+          }
+          const { data: cloudProducts, error } = await query;
+          if (!error && cloudProducts) {
+            let total_cost = 0;
+            let total_retail = 0;
+            let total_wholesale = 0;
+            let total_resale = 0;
+            for (const item of cloudProducts) {
+              const qty = Math.max(0, Number(item.quantity ?? (item as any).stock ?? 0));
+              const cost = Number(item.cost_price ?? item.cost ?? 0);
+              const retail = Number(item.unit_price ?? item.price ?? 0);
+              total_cost += cost * qty;
+              total_retail += retail * qty;
+              const wholesale = Number(item.selling_price_3 || item.wholesale_price_ttc || item.wholesale_price || retail);
+              total_wholesale += wholesale * qty;
+              const resale = Number(item.selling_price_4 || retail);
+              total_resale += resale * qty;
+            }
+            return {
+              total_cost,
+              total_retail,
+              total_wholesale,
+              total_resale,
+              item_count: cloudProducts.length,
+            };
+          }
+        } catch (e) {
+          console.warn('[OfflineInventory] Direct cloud valuation failed, falling back to local DB:', e);
+        }
+      }
       
-      // Calculate from LocalDatabase (IndexedDB) for pure cloud mode or fallback
+      // Calculate from LocalDatabase (IndexedDB) for offline fallback
       await LocalDatabase.init();
       const items = await LocalDatabase.getInventory(storeId === 'all' ? undefined : storeId);
       let total_cost = 0;
@@ -568,7 +605,6 @@ export const OfflineInventoryService = {
   async getLowStockItems(limit: number = 10, storeId?: string): Promise<{ data?: InventoryItem[]; error?: any }> {
     try {
       const dc = getDataClient();
-      await LocalDatabase.init();
       const targetStoreId = storeId === 'all' ? undefined : storeId;
 
       // 1. If Local-First, try Bridge
@@ -596,7 +632,26 @@ export const OfflineInventoryService = {
         }
       }
 
-      // 2. Fallback: IndexedDB
+      // 2. Pure Cloud mode direct fetch from Supabase
+      if (!dc.isLocalFirst && navigator.onLine) {
+        try {
+          let query = supabase.from('products').select('*');
+          if (targetStoreId) {
+            query = query.eq('store_id', targetStoreId);
+          }
+          const { data: cloudProducts, error } = await query;
+          if (!error && cloudProducts) {
+            const mapped = cloudProducts.map(mapDbToInventoryItem);
+            const lowStock = mapped.filter(item => item.quantity <= (item.low_stock_threshold || 10));
+            return { data: lowStock.slice(0, limit) };
+          }
+        } catch (e) {
+          console.warn('[OfflineInventory] Direct cloud low stock fetch failed, falling back to local cache:', e);
+        }
+      }
+
+      // 3. Fallback: IndexedDB
+      await LocalDatabase.init();
       if (targetStoreId) {
         const localInventory = await LocalDatabase.getInventory(targetStoreId);
         const lowStock = localInventory
