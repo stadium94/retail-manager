@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function AnalyticsPage() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, authLoading } = useAuth();
   const { stores, setStores } = useMasterDataStore();
   const { selectedStoreIds, isAllStoresSelected, version } = useMasterDashboardStore();
 
@@ -24,8 +24,10 @@ export default function AnalyticsPage() {
       const { data } = await OfflineStoreService.getStores();
       if (data && data.length > 0) setStores(data);
     };
-    loadStores();
-  }, [user]);
+    if (!authLoading) {
+      loadStores();
+    }
+  }, [user, authLoading]);
 
   const activeStoreIds = useMemo(() => {
     return isAllStoresSelected 
