@@ -81,7 +81,7 @@ export default function StoresPage() {
 
   useEffect(() => {
     loadStores();
-  }, []);
+  }, [user]);
 
   const loadStores = async () => {
     setLoading(true);

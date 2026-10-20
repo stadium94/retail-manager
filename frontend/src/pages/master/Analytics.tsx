@@ -6,9 +6,11 @@ import { useMasterDataStore } from '@/stores/useMasterDataStore';
 import { useTranslation } from 'react-i18next';
 import { useMasterDashboardStore } from '@/stores/useMasterDashboardStore';
 import { OfflineStoreService } from '@/services/OfflineStoreService';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AnalyticsPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const { stores, setStores } = useMasterDataStore();
   const { selectedStoreIds, isAllStoresSelected, version } = useMasterDashboardStore();
 
@@ -19,13 +21,11 @@ export default function AnalyticsPage() {
   // Fetch stores if not available (fixes "no data" when "All stores" is selected)
   useEffect(() => {
     const loadStores = async () => {
-      if (!stores || stores.length === 0) {
-        const { data } = await OfflineStoreService.getStores();
-        if (data) setStores(data);
-      }
+      const { data } = await OfflineStoreService.getStores();
+      if (data && data.length > 0) setStores(data);
     };
     loadStores();
-  }, []);
+  }, [user]);
 
   const activeStoreIds = useMemo(() => {
     return isAllStoresSelected 

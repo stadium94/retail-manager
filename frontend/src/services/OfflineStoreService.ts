@@ -339,13 +339,9 @@ export class OfflineStoreService {
     options?: { notify?: boolean; timeoutMs?: number }
   ): Promise<{ data?: Store[]; error?: any }> {
     try {
-      await LocalDatabase.init();
-      const localStores = await LocalDatabase.getAllStores();
-      const localAsStores = localStores.map(mapLocalStoreToStore);
-
       const dataClient = getDataClient();
       
-      // Pure Cloud mode online fetching
+      // Pure Cloud mode online fetching directly from Supabase first (no blocking on IndexedDB)
       if (!dataClient.isLocalFirst && navigator.onLine) {
         try {
           const { data, error } = await supabase
@@ -355,8 +351,12 @@ export class OfflineStoreService {
           
           if (error) throw error;
           
-          if (data) {
-            await this.cacheRemoteStores(data, localStores);
+          if (data && data.length > 0) {
+            // Cache in local database in background without blocking
+            LocalDatabase.getAllStores().then(localStores => {
+              this.cacheRemoteStores(data, localStores);
+            }).catch(e => console.warn('[OfflineStoreService] Background cache failed:', e));
+
             return { data: data.map(s => ({
               id: s.id,
               name: s.name,
@@ -372,6 +372,10 @@ export class OfflineStoreService {
           console.warn('[OfflineStoreService] Failed to fetch stores from Supabase:', e);
         }
       }
+
+      await LocalDatabase.init();
+      const localStores = await LocalDatabase.getAllStores();
+      const localAsStores = localStores.map(mapLocalStoreToStore);
 
       if (dataClient.isLocalFirst) {
         const headers = await OfflineAuthService.getAuthHeaders();

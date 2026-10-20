@@ -443,10 +443,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (offlineSession.session && !dataClient.isLocalFirst && isJwt(offlineSession.session.access_token)) {
             console.log('[AuthContext] Restoring Supabase client session');
             try {
-              await supabase.auth.setSession({
+              const { error: sessionErr } = await supabase.auth.setSession({
                 access_token: offlineSession.session.access_token,
                 refresh_token: offlineSession.session.refresh_token,
               });
+              if (sessionErr) {
+                console.warn('[AuthContext] Session expired or invalid on Supabase:', sessionErr);
+                await OfflineAuthService.clearOfflineSession();
+                setUser(null);
+                setSession(null);
+                setRoles([]);
+                setLoading(false);
+                return () => {
+                  clearInterval(safetyInterval);
+                  rolesLoadingStartTimeRef.current = null;
+                };
+              }
             } catch (e) {
               console.warn('[AuthContext] Failed to sync restored session to Supabase client:', e);
             }

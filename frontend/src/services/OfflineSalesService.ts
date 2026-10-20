@@ -252,7 +252,6 @@ export const OfflineSalesService = {
     
     async getSales(storeId: string): Promise<any[]> {
       const { isLocalFirst } = getDataClient();
-      await LocalDatabase.init();
 
       if (!isLocalFirst && navigator.onLine) {
         try {
@@ -280,9 +279,10 @@ export const OfflineSalesService = {
               synced: true
             }));
 
-            // Sync to local cache async
+            // Sync to local cache async in background
             (async () => {
               try {
+                await LocalDatabase.init();
                 for (const s of mapped) {
                   await LocalDatabase.saveSale(s);
                 }
@@ -297,6 +297,8 @@ export const OfflineSalesService = {
           console.warn('[OfflineSales] Supabase fetch failed, using local database cache:', e);
         }
       }
+
+      await LocalDatabase.init();
 
       if (isLocalFirst) {
         try {

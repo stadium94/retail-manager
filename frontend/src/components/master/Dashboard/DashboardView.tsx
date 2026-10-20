@@ -15,9 +15,11 @@ import { useMasterDashboardStore } from '@/stores/useMasterDashboardStore'; // <
 import { DataCollectionProgress } from '../AI/DataCollectionProgress';
 import { ChatView } from '../AI/ChatView';
 import { SuggestionsPanel } from '../AI/SuggestionsPanel';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function DashboardView() {
   const { t } = useTranslation();
+  const { user, loading: authLoading } = useAuth();
   const { formatCurrency } = useFormatters();
   const [loading, setLoading] = useState(true);
   const { selectedStoreIds, isAllStoresSelected, version } = useMasterDashboardStore();
@@ -33,6 +35,8 @@ export function DashboardView() {
   const [salesStatus, setSalesStatus] = useState<SalesStatus>('good');
 
   useEffect(() => {
+    if (authLoading) return;
+
     loadDashboardData();
 
     const handleDataUpdated = (e: Event) => {
@@ -44,7 +48,7 @@ export function DashboardView() {
     return () => {
       window.removeEventListener('localDbDataUpdated', handleDataUpdated);
     };
-  }, [version, selectedStoreIds, isAllStoresSelected]);
+  }, [version, selectedStoreIds, isAllStoresSelected, user, authLoading]);
 
   const loadDashboardData = async () => {
     setLoading(true);

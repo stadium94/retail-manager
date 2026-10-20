@@ -185,12 +185,27 @@ class LocalDatabaseService {
     this.initPromise = new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
+      const timer = setTimeout(() => {
+        if (!this.db) {
+          console.warn('LocalDatabase: IndexedDB open timed out after 3000ms, continuing gracefully');
+          resolve();
+        }
+      }, 3000);
+
       request.onerror = () => {
+        clearTimeout(timer);
         console.error('LocalDatabase: Failed to open', request.error);
         reject(request.error);
       };
 
+      request.onblocked = () => {
+        console.warn('LocalDatabase: Database open blocked by another tab');
+        clearTimeout(timer);
+        resolve();
+      };
+
       request.onsuccess = () => {
+        clearTimeout(timer);
         this.db = request.result;
         console.log('LocalDatabase: Opened successfully (V' + DB_VERSION + ')');
         resolve();

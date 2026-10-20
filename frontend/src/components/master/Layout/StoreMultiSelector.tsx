@@ -22,9 +22,11 @@ import { useMasterDataStore } from '@/stores/useMasterDataStore';
 import { useMasterDashboardStore } from '@/stores/useMasterDashboardStore';
 import { useTranslation } from 'react-i18next';
 import { OfflineStoreService } from '@/services/OfflineStoreService';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function StoreMultiSelector() {
   const { t } = useTranslation();
+  const { user, loading: authLoading } = useAuth();
   const [open, setOpen] = useState(false);
   const [availableStores, setAvailableStores] = useState<any[]>([]);
   
@@ -35,15 +37,29 @@ export function StoreMultiSelector() {
     setAllStoresSelected 
   } = useMasterDashboardStore();
 
-  useEffect(() => {
-    const loadStores = async () => {
+  const loadStores = async () => {
+    try {
       const { data } = await OfflineStoreService.getStores();
-      if (data) {
+      if (data && data.length > 0) {
         setAvailableStores(data);
       }
-    };
-    loadStores();
-  }, []);
+    } catch (e) {
+      console.warn('[StoreMultiSelector] loadStores failed:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (!authLoading) {
+      loadStores();
+    }
+  }, [user, authLoading]);
+
+  // When dropdown opens, ensure stores are fresh
+  useEffect(() => {
+    if (open) {
+      loadStores();
+    }
+  }, [open]);
 
   const selectedCount = isAllStoresSelected ? availableStores.length : selectedStoreIds.length;
 
