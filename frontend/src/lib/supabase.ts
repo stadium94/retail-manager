@@ -94,7 +94,9 @@ async function cascadeSignInWithPassword(credentials: { email: string; password:
     if (!candidates.includes(activeTenantId)) {
       candidates.push(activeTenantId);
     }
+    // Add remaining tenants, bounded by MAX_CASCADE_CANDIDATES
     for (const id of Object.keys(REGISTERED_TENANTS)) {
+      if (candidates.length >= MAX_CASCADE_CANDIDATES) break;
       if (!candidates.includes(id)) {
         candidates.push(id);
       }
