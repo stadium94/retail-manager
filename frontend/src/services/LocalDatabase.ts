@@ -615,12 +615,27 @@ class LocalDatabaseService {
     db.transaction('sales', 'readwrite').objectStore('sales').put(sale);
   }
 
+  async deleteSale(id: string): Promise<void> {
+    const db = await this.ensureDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('sales', 'readwrite');
+      const store = tx.objectStore('sales');
+      const req = store.delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
   async getSales(storeId?: string): Promise<LocalSale[]> {
     const db = await this.ensureDb();
     return new Promise(r => {
       const store = db.transaction('sales', 'readonly').objectStore('sales');
       const req = storeId ? store.index('store_id').getAll(storeId) : store.getAll();
-      req.onsuccess = () => r(req.result || []);
+      req.onsuccess = () => {
+        const all: LocalSale[] = req.result || [];
+        r(all.filter((s: any) => !s.deleted_at));
+      };
+      req.onerror = () => r([]);
     });
   }
 

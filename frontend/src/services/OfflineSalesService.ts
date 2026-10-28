@@ -212,32 +212,59 @@ export const OfflineSalesService = {
                 await LocalDatabase.init();
                 const sales = await LocalDatabase.getSales();
                 const existing = sales.find((sale: any) => sale.id === saleId);
-                if (existing) {
-                    await LocalDatabase.saveSale({
-                        ...existing,
-                        deleted_at: new Date().toISOString(),
-                        synced: false
-                    });
-                }
                 
                 if (navigator.onLine) {
-                  try {
-                    const { error } = await supabase
-                      .from('sales')
-                      .delete()
-                      .eq('id', saleId);
-                    if (error) throw error;
-                    
-                    if (existing) {
-                      await LocalDatabase.saveSale({
-                          ...existing,
-                          deleted_at: new Date().toISOString(),
-                          synced: true
-                      });
+                    let cloudDeleted = false;
+                    let lastErr: any = null;
+
+                    // 1. Try dedicated worker_delete_proforma RPC (Security Definer with role/store checks)
+                    try {
+                        const { error: rpcErr } = await supabase.rpc('worker_delete_proforma', { p_sale_id: saleId });
+                        if (!rpcErr) {
+                            cloudDeleted = true;
+                        } else {
+                            console.warn('[OfflineSales] worker_delete_proforma RPC returned error, attempting direct delete:', rpcErr);
+                            lastErr = rpcErr;
+                        }
+                    } catch (e) {
+                        console.warn('[OfflineSales] worker_delete_proforma exception:', e);
+                        lastErr = e;
                     }
-                  } catch (e) {
-                    console.warn('[OfflineSales] Cloud delete failed, queued offline:', e);
-                  }
+
+                    // 2. If RPC failed or unavailable, try direct delete on sales table
+                    if (!cloudDeleted) {
+                        try {
+                            const { error: directErr } = await supabase
+                                .from('sales')
+                                .delete()
+                                .eq('id', saleId);
+                            if (!directErr) {
+                                cloudDeleted = true;
+                            } else {
+                                console.error('[OfflineSales] Direct delete error:', directErr);
+                                lastErr = directErr;
+                            }
+                        } catch (e) {
+                            console.error('[OfflineSales] Direct delete exception:', e);
+                            lastErr = e;
+                        }
+                    }
+
+                    if (!cloudDeleted) {
+                        throw lastErr || new Error('Failed to delete sale from cloud');
+                    }
+
+                    // Completely remove from local IndexedDB cache upon successful cloud delete
+                    await LocalDatabase.deleteSale(saleId);
+                } else {
+                    // Offline fallback: mark as soft-deleted to sync when online returns
+                    if (existing) {
+                        await LocalDatabase.saveSale({
+                            ...existing,
+                            deleted_at: new Date().toISOString(),
+                            synced: false
+                        });
+                    }
                 }
             }
             

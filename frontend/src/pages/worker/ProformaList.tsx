@@ -55,8 +55,11 @@ export default function ProformaList() {
         setIsLoading(true);
         try {
             const offlineSession = await OfflineAuthService.getOfflineSession();
-            const storeId = offlineSession?.user?.user_metadata?.store_id;
-            if (!storeId) return;
+            const storeId = offlineSession?.user?.user_metadata?.store_id || localStorage.getItem('worker_store_id') || offlineSession?.roles?.[0]?.store_id;
+            if (!storeId) {
+                console.warn('[ProformaList] No storeId found in session or localStorage');
+                return;
+            }
 
             const data = await OfflineSalesService.getProformas(storeId);
             setProformas(data);
@@ -122,6 +125,7 @@ export default function ProformaList() {
         setIsDeleting(false);
         if (success) {
             toast({ title: t('common.success'), description: t('edition.saleDeleted', 'Devis/brouillon supprimé') });
+            setProformas(prev => prev.filter(p => p.id !== proformaToDelete.id));
             setProformaToDelete(null);
             loadProformas();
         } else {

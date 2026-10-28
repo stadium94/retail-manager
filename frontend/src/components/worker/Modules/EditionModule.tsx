@@ -108,6 +108,7 @@ export function EditionModule({ storeId, mode }: EditionModuleProps) {
     setIsDeletingSale(false);
     if (success) {
       toast.success(t('edition.saleDeleted', 'Devis/brouillon supprimé'));
+      setSales(prev => prev.filter(s => s.id !== saleToDelete.id));
       setSaleToDelete(null);
       loadData();
     } else {
