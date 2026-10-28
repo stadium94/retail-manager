@@ -17,7 +17,7 @@ import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher';
 import { useDevice } from '@/contexts/DeviceContext';
 import { cn } from '@/lib/utils';
 import { MobileAuthPage } from '@/components/mobile/Auth/MobileAuthPage';
-import { predictTenantByEmail, REGISTERED_TENANTS } from '@/lib/tenants';
+import { predictTenantByEmail, lookupTenantByEmail, REGISTERED_TENANTS, type TenantConfig } from '@/lib/tenants';
 import { setActiveTenant } from '@/lib/supabase';
 
 const loginSchema = z.object({
@@ -63,19 +63,81 @@ export default function AuthPage() {
     fullName: ''
   });
 
-  const detectedTenantId = loginData.email ? predictTenantByEmail(loginData.email) : null;
-  const detectedTenant = detectedTenantId ? REGISTERED_TENANTS[detectedTenantId] : null;
-  const detectedSignupTenantId = signupData.email ? predictTenantByEmail(signupData.email) : null;
-  const detectedSignupTenant = detectedSignupTenantId ? REGISTERED_TENANTS[detectedSignupTenantId] : null;
+  const [detectedTenant, setDetectedTenant] = useState<TenantConfig | null>(() => {
+    const initialId = predictTenantByEmail(loginData.email);
+    return initialId ? REGISTERED_TENANTS[initialId] : null;
+  });
+  const [detectedSignupTenant, setDetectedSignupTenant] = useState<TenantConfig | null>(null);
 
+  // Dynamic tenant discovery as user types email (Niamana Dubai, STIHL, etc.)
   useEffect(() => {
-    if (loginData.email) {
-      const predicted = predictTenantByEmail(loginData.email);
-      if (predicted) {
-        setActiveTenant(predicted);
-      }
+    let isCancelled = false;
+    const email = loginData.email.trim();
+
+    if (!email || !email.includes('@')) {
+      setDetectedTenant(null);
+      return;
     }
+
+    const fastId = predictTenantByEmail(email);
+    if (fastId && REGISTERED_TENANTS[fastId]) {
+      setDetectedTenant(REGISTERED_TENANTS[fastId]);
+      setActiveTenant(fastId);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      const tenantId = await lookupTenantByEmail(email);
+      if (!isCancelled) {
+        if (tenantId && REGISTERED_TENANTS[tenantId]) {
+          setDetectedTenant(REGISTERED_TENANTS[tenantId]);
+          setActiveTenant(tenantId);
+        } else {
+          setDetectedTenant(null);
+        }
+      }
+    }, 200);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
   }, [loginData.email]);
+
+  // Dynamic tenant discovery for signup
+  useEffect(() => {
+    let isCancelled = false;
+    const email = signupData.email.trim();
+
+    if (!email || !email.includes('@')) {
+      setDetectedSignupTenant(null);
+      return;
+    }
+
+    const fastId = predictTenantByEmail(email);
+    if (fastId && REGISTERED_TENANTS[fastId]) {
+      setDetectedSignupTenant(REGISTERED_TENANTS[fastId]);
+      setActiveTenant(fastId);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      const tenantId = await lookupTenantByEmail(email);
+      if (!isCancelled) {
+        if (tenantId && REGISTERED_TENANTS[tenantId]) {
+          setDetectedSignupTenant(REGISTERED_TENANTS[tenantId]);
+          setActiveTenant(tenantId);
+        } else {
+          setDetectedSignupTenant(null);
+        }
+      }
+    }, 200);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [signupData.email]);
 
   // "Signup" on local-first installs IS the first-run master+store bootstrap
   // (AuthContext.signUp -> OfflineAuthService.bootstrapMaster), not a public

@@ -596,11 +596,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let storeName = metadata.store_name || 'Cloud Restaurant';
       let subRole = metadata.sub_role || null;
 
-      const emailLower = email.toLowerCase();
-      if (emailLower === 'imsnsylla@gmail.com' || emailLower === 'bahsyllah223@gmail.com' || emailLower === 'ursula@master.com') {
-        role = 'master';
-      }
-
       // Check user_roles table on Supabase — pick highest-priority role
       try {
         const { data: rolesData, error: rolesError } = await supabase

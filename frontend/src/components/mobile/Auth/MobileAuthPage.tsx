@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import logoUrl from '@/assets/logo.png';
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher';
-import { predictTenantByEmail, REGISTERED_TENANTS } from '@/lib/tenants';
+import { predictTenantByEmail, lookupTenantByEmail, REGISTERED_TENANTS, type TenantConfig } from '@/lib/tenants';
 import { setActiveTenant } from '@/lib/supabase';
 
 export interface MobileAuthPageProps {
@@ -32,18 +32,42 @@ export function MobileAuthPage({
 }: MobileAuthPageProps) {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
-    const activeEmail = activeTab === 'signup' ? signupData?.email : loginData?.email;
-    const detectedTenantId = activeEmail ? predictTenantByEmail(activeEmail) : null;
-    const detectedTenant = detectedTenantId ? REGISTERED_TENANTS[detectedTenantId] : null;
+    const [detectedTenant, setDetectedTenant] = useState<TenantConfig | null>(null);
 
+    // Dynamic tenant discovery as user types email (Niamana Dubai, STIHL, etc.)
     useEffect(() => {
-        if (loginData.email) {
-            const predicted = predictTenantByEmail(loginData.email);
-            if (predicted) {
-                setActiveTenant(predicted);
-            }
+        let isCancelled = false;
+        const activeEmail = (activeTab === 'signup' ? signupData?.email : loginData?.email)?.trim();
+
+        if (!activeEmail || !activeEmail.includes('@')) {
+            setDetectedTenant(null);
+            return;
         }
-    }, [loginData.email]);
+
+        const fastId = predictTenantByEmail(activeEmail);
+        if (fastId && REGISTERED_TENANTS[fastId]) {
+            setDetectedTenant(REGISTERED_TENANTS[fastId]);
+            setActiveTenant(fastId);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            const tenantId = await lookupTenantByEmail(activeEmail);
+            if (!isCancelled) {
+                if (tenantId && REGISTERED_TENANTS[tenantId]) {
+                    setDetectedTenant(REGISTERED_TENANTS[tenantId]);
+                    setActiveTenant(tenantId);
+                } else {
+                    setDetectedTenant(null);
+                }
+            }
+        }, 200);
+
+        return () => {
+            isCancelled = true;
+            clearTimeout(timer);
+        };
+    }, [loginData?.email, signupData?.email, activeTab]);
 
     const showSignup = canSignUp && activeTab === 'signup';
 

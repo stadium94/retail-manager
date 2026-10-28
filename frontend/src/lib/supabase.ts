@@ -3,7 +3,8 @@ import {
   REGISTERED_TENANTS,
   TenantConfig,
   detectInitialTenantId,
-  predictTenantByEmail
+  predictTenantByEmail,
+  lookupTenantByEmail
 } from './tenants';
 
 export const FALLBACK_SUPABASE_URL = REGISTERED_TENANTS.stihl.supabaseUrl;
@@ -84,8 +85,8 @@ async function cascadeSignInWithPassword(credentials: { email: string; password:
   const { email, password } = credentials;
   const cleanEmail = email.trim();
 
-  // 1. Prediction by domain or email
-  const predictedId = predictTenantByEmail(cleanEmail);
+  // 1. Dynamic lookup across organizations without hardcoded emails
+  const predictedId = predictTenantByEmail(cleanEmail) || (await lookupTenantByEmail(cleanEmail));
   const candidates: string[] = [];
 
   if (predictedId && REGISTERED_TENANTS[predictedId]) {
@@ -94,12 +95,13 @@ async function cascadeSignInWithPassword(credentials: { email: string; password:
     if (!candidates.includes(activeTenantId)) {
       candidates.push(activeTenantId);
     }
-    // Add remaining tenants, bounded by MAX_CASCADE_CANDIDATES
-    for (const id of Object.keys(REGISTERED_TENANTS)) {
-      if (candidates.length >= MAX_CASCADE_CANDIDATES) break;
-      if (!candidates.includes(id)) {
-        candidates.push(id);
-      }
+  }
+
+  // Add remaining tenants, bounded by MAX_CASCADE_CANDIDATES
+  for (const id of Object.keys(REGISTERED_TENANTS)) {
+    if (candidates.length >= MAX_CASCADE_CANDIDATES) break;
+    if (!candidates.includes(id)) {
+      candidates.push(id);
     }
   }
 
