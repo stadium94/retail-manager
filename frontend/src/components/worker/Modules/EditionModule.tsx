@@ -98,8 +98,8 @@ export function EditionModule({ storeId, mode }: EditionModuleProps) {
   const [saleToDelete, setSaleToDelete] = useState<SaleWithItems | null>(null);
   const [isDeletingSale, setIsDeletingSale] = useState(false);
 
-  const isUnpaidDraftSale = (sale: SaleWithItems) =>
-    sale.sale_type === 'proforma' || (sale.payment_status === 'pending' && Number(sale.amount_paid || 0) === 0);
+  const isProformaDraftSale = (sale: SaleWithItems) =>
+    sale.sale_type === 'proforma';
 
   const handleConfirmDeleteSale = async () => {
     if (!saleToDelete) return;
@@ -726,7 +726,7 @@ export function EditionModule({ storeId, mode }: EditionModuleProps) {
                               <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10" onClick={() => setSelectedSale(sale)}>
                                 <Eye className="h-4 w-4 text-primary" />
                               </Button>
-                              {isUnpaidDraftSale(sale) && (
+                              {isProformaDraftSale(sale) && (
                                 <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-destructive/10" onClick={() => setSaleToDelete(sale)}>
                                   <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>
