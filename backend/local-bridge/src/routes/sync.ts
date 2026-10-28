@@ -26,18 +26,21 @@ const MAX_OUTBOX_RETRIES = 8;
 const MAX_OUTBOX_PUSH_PER_CALL = 300;
 
 const pushSchema = z.object({
-  supabase_service_key: z.string().min(1),
+  supabase_service_key: z.string().optional(),
   entity: z.string().optional(),
   payload: z.any().optional(),
   store_id: z.string().optional(),
 });
 
-const buildSupabaseHeaders = (): SupabaseHeaders => ({
-  apikey: env.supabaseServiceKey,
-  Authorization: `Bearer ${env.supabaseServiceKey}`,
-  'Content-Type': 'application/json',
-  Prefer: 'resolution=merge-duplicates',
-});
+const buildSupabaseHeaders = (): SupabaseHeaders => {
+  const token = env.supabaseServiceKey || env.supabaseAnonKey;
+  return {
+    apikey: token,
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    Prefer: 'resolution=merge-duplicates',
+  };
+};
 
 export async function registerSyncRoutes(app: FastifyInstance) {
   // Handshake / capabilities endpoint
@@ -80,7 +83,7 @@ export async function registerSyncRoutes(app: FastifyInstance) {
   });
 
   app.post('/sync/push', async (request, reply) => {
-    const claims = authenticateRequest(request, reply, ['supabase-sync']);
+    const claims = authenticateRequest(request, reply, ['master', 'worker', 'supabase-sync']);
     if (!claims) return;
 
     const parsed = pushSchema.safeParse(request.body ?? {});
@@ -88,8 +91,10 @@ export async function registerSyncRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'ValidationFailed', details: parsed.error.flatten() });
     }
 
-    if (!env.supabaseServiceKey || parsed.data.supabase_service_key !== env.supabaseServiceKey) {
-      return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid Supabase service key.' });
+    if (claims.role === 'supabase-sync') {
+      if (!env.supabaseServiceKey || parsed.data.supabase_service_key !== env.supabaseServiceKey) {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid Supabase service key.' });
+      }
     }
 
     if (!env.supabaseUrl) {

@@ -2,16 +2,67 @@ name: "CI/CD Pipeline: Build Windows Application"
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - unify-stores
+    paths-ignore:
+      - 'src-tauri/tauri.conf.json'
+      - 'frontend/package.json'
+      - 'README.md'
+      - 'docs/**'
+      - 'memory-bank/**'
+      - '.agent/**'
+
+concurrency:
+  group: build-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
+      - name: Bump patch version
+        shell: pwsh
+        # tauri.conf.json's version was a static number nobody bumped, so
+        # every build published the same filename to stadium94/app-releases
+        # and silently overwrote the previous one. Auto-increment the patch
+        # component here, before the build steps, so the version baked into
+        # the app AND the published filename are both unique per build.
+        run: |
+          $confPath = "src-tauri/tauri.conf.json"
+          $content = Get-Content $confPath -Raw
+          if ($content -notmatch '"version":\s*"(\d+)\.(\d+)\.(\d+)"') {
+            Write-Error "Could not find a version field in $confPath"
+            exit 1
+          }
+          $newPatch = [int]$matches[3] + 1
+          $newVersion = "$($matches[1]).$($matches[2]).$newPatch"
+          $newContent = $content -replace '"version":\s*"\d+\.\d+\.\d+"', "`"version`": `"$newVersion`""
+          Set-Content -Path $confPath -Value $newContent -NoNewline
+          Write-Host "Bumped version to $newVersion in $confPath"
+
+          $pkgPath = "frontend/package.json"
+          if (Test-Path $pkgPath) {
+            $pkgContent = Get-Content $pkgPath -Raw
+            $newPkgContent = $pkgContent -replace '"version":\s*"\d+\.\d+\.\d+"', "`"version`": `"$newVersion`""
+            Set-Content -Path $pkgPath -Value $newPkgContent -NoNewline
+            Write-Host "Bumped version to $newVersion in $pkgPath"
+            git add $pkgPath
+          }
+
+          git config user.email "ci@retail-manager.local"
+          git config user.name "retail-manager CI"
+          git add $confPath
+          git commit -q -m "chore: bump version to $newVersion [skip ci]"
+          git push origin "HEAD:${{ github.ref_name }}"
+
       - name: Setup Node.js v18
         uses: actions/setup-node@v4
         with:
@@ -33,6 +84,7 @@ jobs:
 
       - name: Build Frontend
         working-directory: frontend
+        # Multi-tenant safe: STIHL and Holding Pro fallbacks
         env:
           VITE_SUPABASE_URL: https://fpvrbxmbrotowdlyebqv.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_3GUAh6Utm-V9SNLOTBOsxw_XQaNT1d2
@@ -41,19 +93,80 @@ jobs:
           npm run build
 
       - name: Prepare Sidecar Payload
+        env:
+          SUPABASE_SERVICE_KEY_BUILD: ${{ secrets.STIHL_SUPABASE_SERVICE_KEY }}
         run: powershell -ExecutionPolicy Bypass -File scripts/prepare-sidecar-payload.ps1
 
       - name: Build Tauri Application
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__
-          releaseName: "App v__VERSION__"
-          releaseBody: "Automated release by CI/CD Pipeline."
-          releaseDraft: true
-          prerelease: false
           args: --target x86_64-pc-windows-msvc
 
+      - name: Publish installer to stadium94/app-releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.STADIUM94_RELEASE_TOKEN }}
+        run: |
+          $files = Get-ChildItem -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle" -Recurse -Include *.msi,*.exe
+          if ($files.Count -eq 0) {
+            Write-Error "No installer files found under src-tauri/target/x86_64-pc-windows-msvc/release/bundle"
+            exit 1
+          }
 
+          $branch = "${{ github.ref_name }}"
+          $publishDir = "publish-releases-repo"
+          $remoteUrl = "https://x-access-token:$env:GH_TOKEN@github.com/stadium94/app-releases.git"
 
+          git clone --branch $branch --single-branch $remoteUrl $publishDir 2>$null
+          if (-not (Test-Path (Join-Path $publishDir ".git"))) {
+            Remove-Item -Recurse -Force $publishDir -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path $publishDir | Out-Null
+            Push-Location $publishDir
+            git init -q
+            git checkout -q -b $branch
+            Pop-Location
+          }
+
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $exe = $files | Where-Object { $_.Extension -eq ".exe" } | Select-Object -First 1
+          $msi = $files | Where-Object { $_.Extension -eq ".msi" } | Select-Object -First 1
+          $exeDestName = "retail-manager-setup-$version.exe"
+          if ($exe) { Copy-Item $exe.FullName -Destination (Join-Path $publishDir $exeDestName) }
+          if ($msi) { Copy-Item $msi.FullName -Destination (Join-Path $publishDir "retail-manager-installer-$version.msi") }
+
+          if ($exe) {
+            $sigPath = "$($exe.FullName).sig"
+            if (Test-Path $sigPath) {
+              $signature = Get-Content $sigPath -Raw
+              $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+              $rawUrl = "https://raw.githubusercontent.com/stadium94/app-releases/$branch/$exeDestName"
+              $manifest = @{
+                version = $version
+                notes = "Automated build from ${{ github.repository }} @ ${{ github.sha }}"
+                pub_date = $pubDate
+                platforms = @{
+                  "windows-x86_64" = @{
+                    signature = $signature.Trim()
+                    url = $rawUrl
+                  }
+                }
+              }
+              $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $publishDir "latest.json") -NoNewline
+            } else {
+              Write-Warning "No .sig file found next to the installer - latest.json will NOT be updated."
+            }
+          }
+
+          Push-Location $publishDir
+          git config user.email "ci@retail-manager.local"
+          git config user.name "retail-manager CI"
+          git remote remove origin 2>$null
+          git remote add origin $remoteUrl
+          git add -A
+          git commit -q -m "Automated build from ${{ github.repository }} @ ${{ github.sha }} (run ${{ github.run_number }})"
+          git push origin "HEAD:$branch"
+          Pop-Location

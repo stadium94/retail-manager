@@ -6,6 +6,7 @@ import { DEV_MODE_UUIDS } from '@/utils/devMode';
 import { OfflineAuthService } from '@/services/OfflineAuthService';
 import { getDataClient, smartFetch } from '@/lib/dataClient';
 import { SyncService } from '@/services/SyncService';
+import { LocalBridgeSyncService } from '@/services/LocalBridgeSyncService';
 import { LocalDatabase } from '@/services/LocalDatabase';
 import { supabase } from '@/lib/supabase';
 import { SupabaseSyncService } from '@/services/SupabaseSyncService';
@@ -197,6 +198,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: i18n.t('sync.syncingPending'),
       });
       SyncService.syncAll();
+      const dc = getDataClient();
+      if (dc.isLocalFirst) {
+        const storeId = localStorage.getItem('worker_store_id') || undefined;
+        LocalBridgeSyncService.pushPendingMutations(storeId).catch((err) => {
+          console.warn('[AuthContext] Local bridge pushPendingMutations failed:', err);
+        });
+      }
     };
 
     const handleOffline = () => {

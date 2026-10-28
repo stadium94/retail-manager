@@ -60,12 +60,10 @@ const PAYLOAD_BUILDERS: Record<string, PayloadBuilder> = {
   sale: (raw) => ({
     ...pick(raw, [
       'id', 'store_id', 'customer_name', 'customer_phone', 'sale_type',
-      'total_price', 'discount', 'tax', 'payment_method', 'payment_status',
-      'notes', 'invoice_number', 'created_at', 'updated_at',
+      'total_price', 'amount_paid', 'discount', 'tax', 'payment_method', 'payment_status',
+      'client_id', 'notes', 'invoice_number', 'created_at', 'updated_at',
     ]),
-    // worker_id / client_id intentionally omitted: worker_id references
-    // auth.users (local worker ids never exist there); client_id has no
-    // matching column in Supabase's sales table.
+    // worker_id intentionally omitted: references auth.users (local worker ids never exist there).
   }),
 
   sale_item: (raw) => pick(raw, [

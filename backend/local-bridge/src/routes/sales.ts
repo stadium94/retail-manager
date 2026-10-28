@@ -322,11 +322,9 @@ export async function registerSalesRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Forbidden', message: 'Cannot delete sale.' });
     }
 
-    // Cashiers (role 'worker') may only delete unpaid proformas/drafts, never a paid sale.
-    const isUnpaidDraft = existing.sale_type === 'proforma'
-      || (existing.payment_status === 'pending' && Number(existing.amount_paid) === 0);
-    if (claims.role === 'worker' && !isUnpaidDraft) {
-      return reply.status(403).send({ error: 'Forbidden', message: 'Cannot delete a paid sale.' });
+    // Cashiers (role 'worker') may only delete proforma drafts, never a normal or unpaid sale.
+    if (claims.role === 'worker' && existing.sale_type !== 'proforma') {
+      return reply.status(403).send({ error: 'Forbidden', message: 'Cashiers can only delete proforma drafts.' });
     }
 
     db.deleteSale(saleId);
