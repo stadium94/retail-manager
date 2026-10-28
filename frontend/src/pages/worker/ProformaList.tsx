@@ -38,7 +38,7 @@ export default function ProformaList() {
 
     const printRef = useRef<HTMLDivElement>(null);
     const [selectedInvoice, setSelectedInvoice] = useState<InvoiceData | null>(null);
-    const [storeName, setStoreName] = useState<string>(t('index.title'));
+    const [currentStore, setCurrentStore] = useState<any>(null);
     const [proformaToDelete, setProformaToDelete] = useState<any | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
@@ -62,7 +62,7 @@ export default function ProformaList() {
             setProformas(data);
 
             const { data: store } = await OfflineStoreService.getStore(storeId);
-            if (store?.name) setStoreName(store.name);
+            if (store) setCurrentStore(store);
         } catch (error) {
             console.error(error);
             toast({ variant: "destructive", title: t('common.error'), description: t('common.failedToLoad') });
@@ -97,7 +97,9 @@ export default function ProformaList() {
     const onPrintClick = (proforma: any) => {
         const invoiceData: InvoiceData = {
             id: proforma.id,
-            storeName,
+            storeName: currentStore?.name || t('index.title'),
+            storeAddress: currentStore?.address || undefined,
+            storePhone: currentStore?.phone || undefined,
             workerName: t('edition.seller'),
             customerName: proforma.customer_name,
             customerPhone: proforma.customer_phone,

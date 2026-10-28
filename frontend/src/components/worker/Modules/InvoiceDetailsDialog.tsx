@@ -75,6 +75,7 @@ export function InvoiceDetailsDialog({ sale, onClose }: InvoiceDetailsDialogProp
     order_ref: sale.order_ref || undefined,
     storeName: store?.name || t('index.title'),
     storeAddress: store?.address || undefined,
+    storePhone: store?.phone || undefined,
     workerName: undefined,
     customerName: sale.customer_name || undefined,
     customerPhone: sale.customer_phone || undefined,
