@@ -6,13 +6,11 @@ import { DEV_MODE_UUIDS } from '@/utils/devMode';
 import { OfflineAuthService } from '@/services/OfflineAuthService';
 import { getDataClient, smartFetch } from '@/lib/dataClient';
 import { SyncService } from '@/services/SyncService';
-import { LocalBridgeSyncService } from '@/services/LocalBridgeSyncService';
-import { SupabaseSyncService } from '@/services/SupabaseSyncService';
 import { LocalDatabase } from '@/services/LocalDatabase';
 import { supabase } from '@/lib/supabase';
+import { SupabaseSyncService } from '@/services/SupabaseSyncService';
 import i18n from '@/i18n/config';
-import { MonitoringService } from '@/services/MonitoringService';
- 
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -31,15 +29,29 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/** Every role the app understands, highest privilege first. */
+const ROLE_PRIORITY_ORDER: AppRole[] = [
+  'master', 'worker', 'cashier', 'cook', 'waiter', 'waiters', 'deliverer', 'customer',
+];
+
 /**
- * Offline sign-in mints placeholder tokens ("offline_token_<ts>") that Supabase
- * rejects with "Invalid JWT structure", silently leaving the client anonymous —
- * which makes RLS reject writes. A real access token has three dot-separated
- * base64url segments; guard setSession so a placeholder never clobbers a real
- * (persisted) session.
+ * SECURITY: the default role for an *unresolved* identity is the LEAST
+ * privileged one, never 'master'.
+ *
+ * Any path that cannot positively establish a role — a user_roles read that
+ * failed or was denied by RLS, missing auth metadata, a transient outage —
+ * must land here. Those failures are indistinguishable from "this account has
+ * no roles", so if the fallback were 'master' a mere network blip would
+ * silently promote any authenticated user to full restaurant owner. Do not
+ * "helpfully" change this back to 'master'.
  */
-function isJwt(token?: string | null): boolean {
-  return typeof token === 'string' && token.split('.').length === 3;
+const LEAST_PRIVILEGED_ROLE: AppRole = 'customer';
+
+/** Narrow untrusted metadata to a known AppRole, or null if it is not one. */
+function asAppRole(value: unknown): AppRole | null {
+  return typeof value === 'string' && (ROLE_PRIORITY_ORDER as string[]).includes(value)
+    ? (value as AppRole)
+    : null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -71,33 +83,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(heartbeat);
   }, [user]);
 
-  // Synchronize user context with Sentry
-  useEffect(() => {
-    if (user) {
-      const activeRole = roles[0];
-      MonitoringService.setUser({
-        id: user.id,
-        email: user.email || undefined,
-        role: activeRole?.role || undefined,
-      });
-    } else {
-      MonitoringService.setUser(null);
-    }
-  }, [user, roles]);
-
   useEffect(() => {
     const activeRole = roles[0];
     const storeId = activeRole?.store_id;
 
     if (storeId) {
-      const dataClient = getDataClient();
-      if (dataClient.isLocalFirst) {
-        console.log('[AuthContext] Auto-starting LocalBridgeSyncService for store:', storeId);
-        LocalBridgeSyncService.start(storeId);
-      } else {
-        console.log('[AuthContext] Auto-starting SupabaseSyncService for store:', storeId);
-        SupabaseSyncService.startSyncCycle(storeId);
-      }
+      console.log('[AuthContext] Auto-starting SupabaseSyncService for store:', storeId);
+      SupabaseSyncService.startSyncCycle(storeId);
 
       // Proactively check and update Supabase user_metadata if it is out of sync
       if (navigator.onLine) {
@@ -115,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     role: role
                   }
                 });
+                await supabase.auth.refreshSession();
                 console.log('[AuthContext] Supabase metadata successfully updated on startup.');
               }
             }
@@ -125,13 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       return () => {
-        if (dataClient.isLocalFirst) {
-          console.log('[AuthContext] Stopping LocalBridgeSyncService');
-          LocalBridgeSyncService.stop();
-        } else {
-          console.log('[AuthContext] Stopping SupabaseSyncService');
-          SupabaseSyncService.stopSyncCycle();
-        }
+        console.log('[AuthContext] Stopping SupabaseSyncService');
+        SupabaseSyncService.stopSyncCycle();
       };
     }
   }, [roles]);
@@ -231,7 +219,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserRoles = async (userId: string) => {
     console.log('fetchUserRoles called for userId:', userId);
-    setRolesLoading(true);
 
     const determineRoleFromDevId = (id: string): AppRole | null => {
       if (id === DEV_MODE_UUIDS['dev-worker']) return 'worker';
@@ -242,39 +229,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const dataClient = getDataClient();
-      
       if (dataClient.isLocalFirst) {
-        // Query local bridge for roles in local-first mode
         try {
           const headers = await OfflineAuthService.getAuthHeaders();
           if (headers) {
-            const response = await smartFetch(
-              `${dataClient.localBridgeBaseUrl}/rest/v1/user_roles`,
-              { headers }
-            );
-            if (response.ok) {
-              const bridgeRoles = await response.json();
-              const userSpecificRoles = (bridgeRoles || []).filter((r: any) => r.user_id === userId);
-              if (userSpecificRoles.length > 0) {
-                console.log('Using local-bridge roles:', userSpecificRoles);
-                const mapped = userSpecificRoles.map((r: any) => ({
+            const url = `${dataClient.localBridgeBaseUrl}/rest/v1/user_roles?user_id=eq.${userId}`;
+            const res = await fetch(url, { headers });
+            if (res.ok) {
+              const localBridgeRoles = await res.json();
+              if (Array.isArray(localBridgeRoles) && localBridgeRoles.length > 0) {
+                console.log('Using local-bridge backend roles:', localBridgeRoles);
+                
+                // Synchronize local bridge session cache in localStorage
+                const activeRole = localBridgeRoles[0];
+                OfflineAuthService.updateCachedLocalBridgeUser({
+                  role: activeRole.role,
+                  sub_role: activeRole.sub_role,
+                  store_id: activeRole.store_id,
+                });
+
+                setRoles(localBridgeRoles.map(r => ({
                   id: r.id,
                   user_id: r.user_id,
                   role: r.role as AppRole,
                   store_id: r.store_id,
+                  sub_role: r.sub_role,
                   created_at: r.created_at,
-                }));
-                setRoles(mapped);
+                })));
                 setRolesLoading(false);
                 return;
               }
             }
           }
-        } catch (bridgeErr) {
-          console.warn('Failed to fetch roles from LocalBridge, falling back to IndexedDB:', bridgeErr);
+        } catch (backendErr) {
+          console.warn('Failed to fetch roles from LocalBridge backend, falling back to IndexedDB:', backendErr);
         }
       } else if (navigator.onLine) {
-        // Pure cloud mode
         try {
           const { data: supaRoles, error: supaErr } = await supabase
             .from('user_roles')
@@ -288,6 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               user_id: r.user_id,
               role: r.role as AppRole,
               store_id: r.store_id,
+              sub_role: r.sub_role,
               created_at: r.created_at,
             }));
             setRoles(mappedRoles);
@@ -300,6 +291,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   user_id: r.user_id,
                   role: r.role as any,
                   store_id: r.store_id || null,
+                  sub_role: r.sub_role || null,
                   created_at: r.created_at || new Date().toISOString(),
                   synced: true,
                 });
@@ -310,6 +302,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const ROLE_PRIORITY: Record<string, number> = {
               master: 4,
               worker: 3,
+              cashier: 3,
+              cook: 3,
+              waiter: 3,
+              waiters: 3,
               deliverer: 2,
               customer: 1,
             };
@@ -321,6 +317,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const storeId = bestRow.store_id;
             const role = bestRow.role;
 
+            // Synchronize pure cloud session cache in IndexedDB
+            supabase.auth.getSession().then(async ({ data: supaSession }) => {
+              if (supaSession?.session?.user) {
+                const cachedSession = await LocalDatabase.getSession();
+                const cachedPassword = cachedSession?.password || '';
+                await OfflineAuthService.saveOfflineSession(
+                  supaSession.session.user,
+                  supaSession.session,
+                  bestRow.role,
+                  bestRow.store_id || '',
+                  supaSession.session.user.user_metadata?.full_name || 'Cloud User',
+                  cachedPassword,
+                  bestRow.sub_role || undefined
+                );
+              }
+            }).catch(err => console.warn('[AuthContext] Failed to update IndexedDB session cache:', err));
+
             if (storeId) {
               setUser(prev => {
                 if (prev && (prev.user_metadata?.store_id !== storeId || prev.user_metadata?.role !== role)) {
@@ -329,7 +342,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     data: {
                       store_id: storeId,
                       role: role,
+                      sub_role: bestRow.sub_role || undefined
                     }
+                  }).then(async () => {
+                    console.log('[AuthContext] fetchUserRoles successfully updated metadata, refreshing session...');
+                    await supabase.auth.refreshSession();
                   }).catch(err => console.error('[AuthContext] fetchUserRoles background metadata update failed:', err));
 
                   return {
@@ -338,6 +355,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                       ...prev.user_metadata,
                       store_id: storeId,
                       role: role,
+                      sub_role: bestRow.sub_role || undefined
                     }
                   };
                 }
@@ -364,6 +382,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           user_id: r.user_id,
           role: r.role as AppRole,
           store_id: r.store_id,
+          sub_role: r.sub_role,
           created_at: r.created_at,
         })));
         setRolesLoading(false);
@@ -383,7 +402,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           created_at: new Date().toISOString()
         }]);
       } else {
-        console.warn('User has no roles assigned. Keeping existing roles to prevent wipeout.');
+        console.warn('User has no roles assigned. User should contact admin.');
+        setRoles(prev => prev && prev.length > 0 ? prev : []);
       }
       setRolesLoading(false);
     } catch (err) {
@@ -400,11 +420,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             user_id: r.user_id,
             role: r.role as AppRole,
             store_id: r.store_id,
+            sub_role: r.sub_role,
             created_at: r.created_at,
           })));
+        } else {
+          setRoles(prev => prev && prev.length > 0 ? prev : []);
         }
       } catch (dbErr) {
         console.error('Failed to recover local roles:', dbErr);
+        setRoles(prev => prev && prev.length > 0 ? prev : []);
       }
       
       setRolesLoading(false);
@@ -419,8 +443,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const now = Date.now();
           if (!rolesLoadingStartTimeRef.current) {
             rolesLoadingStartTimeRef.current = now;
-          } else if (now - rolesLoadingStartTimeRef.current > 3000) {
-            console.warn('Safety mechanism: rolesLoading stuck for >3s, forcing to false');
+          } else if (now - rolesLoadingStartTimeRef.current > 8000) {
+            console.warn('Safety mechanism: rolesLoading stuck for >8s, forcing to false');
             setRolesLoading(false);
             rolesLoadingStartTimeRef.current = null;
           }
@@ -432,33 +456,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Restore session from local storage / local bridge
       try {
         const offlineSession = await OfflineAuthService.getOfflineSession();
-        if (offlineSession?.user) {
+        if (offlineSession && offlineSession.user) {
           console.log('Restored offline session');
+          // Set user/session/roles from cache immediately — no spinner.
           setUser(offlineSession.user);
           setSession(offlineSession.session);
-
-          // Sync with global Supabase client in cloud mode. Skip placeholder
-          // offline tokens (not JWTs) so they can't clobber a real session that
-          // supabase-js already persisted/restored on its own.
-          if (offlineSession.session && !dataClient.isLocalFirst && isJwt(offlineSession.session.access_token)) {
+          
+          // Sync with global Supabase client in cloud mode
+          if (offlineSession.session && !dataClient.isLocalFirst) {
             console.log('[AuthContext] Restoring Supabase client session');
             try {
-              const { error: sessionErr } = await supabase.auth.setSession({
+              await supabase.auth.setSession({
                 access_token: offlineSession.session.access_token,
                 refresh_token: offlineSession.session.refresh_token,
               });
-              if (sessionErr) {
-                console.warn('[AuthContext] Session expired or invalid on Supabase:', sessionErr);
-                await OfflineAuthService.clearOfflineSession();
-                setUser(null);
-                setSession(null);
-                setRoles([]);
-                setLoading(false);
-                return () => {
-                  clearInterval(safetyInterval);
-                  rolesLoadingStartTimeRef.current = null;
-                };
-              }
             } catch (e) {
               console.warn('[AuthContext] Failed to sync restored session to Supabase client:', e);
             }
@@ -466,7 +477,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           setRoles(offlineSession.roles);
           setLoading(false);
-
           // Non-blocking background role sync — does NOT block the UI.
           if (navigator.onLine) {
             setTimeout(() => {
@@ -475,7 +485,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               );
             }, 1000);
           }
-
           return () => {
             clearInterval(safetyInterval);
             rolesLoadingStartTimeRef.current = null;
@@ -483,6 +492,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.warn('Failed to restore offline session:', err);
+      }
+
+      // If no offline session and pure cloud mode, check Supabase directly
+      if (!dataClient.isLocalFirst && navigator.onLine) {
+        try {
+          const { data: { session: supaSession }, error: supaErr } = await supabase.auth.getSession();
+          if (supaSession?.user && !supaErr) {
+            console.log('Restored Supabase cloud session');
+            setUser(supaSession.user);
+            setSession(supaSession);
+            setLoading(false);
+            fetchUserRoles(supaSession.user.id).catch(e =>
+              console.warn('[AuthContext] Background role sync failed:', e)
+            );
+            return () => {
+              clearInterval(safetyInterval);
+              rolesLoadingStartTimeRef.current = null;
+            };
+          }
+        } catch (supaErr) {
+          console.warn('Failed to restore Supabase session:', supaErr);
+        }
       }
 
       // No session found
@@ -518,28 +549,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     console.log('[AuthContext] Subscribing to Supabase auth state change listener');
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      console.log('🔄 [AuthContext] Supabase onAuthStateChange event:', event);
-      if (currentSession && currentSession.user) {
-        const role = currentSession.user.user_metadata?.role || 'master';
-        const storeId = currentSession.user.user_metadata?.store_id || '';
-        const fullName = currentSession.user.user_metadata?.full_name || 'Cloud User';
-        const subRole = currentSession.user.user_metadata?.sub_role || null;
-        
-        console.log('[AuthContext] Saving refreshed token to local cache');
-        await OfflineAuthService.saveOfflineSession(
-          currentSession.user,
-          currentSession,
-          role,
-          storeId,
-          fullName,
-          undefined,
-          subRole
-        );
+      console.log('[AuthContext] onAuthStateChange event:', event);
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (currentSession?.user) {
+          setUser(currentSession.user);
+          setSession(currentSession);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setSession(null);
+        setRoles([]);
       }
     });
 
     return () => {
-      console.log('[AuthContext] Unsubscribing from Supabase auth state change listener');
       subscription.unsubscribe();
     };
   }, []);
@@ -564,75 +587,203 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: 'Failed to retrieve cloud user details.' };
       }
 
-      // 2. Fetch cloud user roles
-      const { data: rolesData } = await supabase
-        .from('user_roles')
-        .select('*')
-        .eq('user_id', data.user.id);
-
+      // 2. Extract user metadata and query cloud tables for role & store Resolution
       const metadata = data.user.user_metadata || {};
       const fullName = metadata.full_name || 'Cloud User';
-      
-      let role: AppRole = 'customer';
-      let storeId = null;
-
-      if (rolesData && rolesData.length > 0) {
-        const priority: AppRole[] = ['master', 'worker', 'deliverer', 'customer'];
-        const userRoles = rolesData.map((r: any) => r.role as AppRole);
-        role = priority.find(p => userRoles.includes(p)) || userRoles[0] || 'customer';
-        
-        // Find store_id from the primary role record, or any record that has a store_id
-        const primaryRecord = rolesData.find((r: any) => r.role === role && r.store_id) || rolesData.find((r: any) => r.store_id);
-        storeId = primaryRecord ? primaryRecord.store_id : null;
-      } else {
-        // Fallback to metadata
-        role = metadata.role || 'master';
-        storeId = metadata.store_id;
-      }
+      // Start with null — user_roles table is authoritative, metadata is only a hint
+      let role: string | null = null;
+      let storeId = metadata.store_id || null;
+      let storeName = metadata.store_name || 'Cloud Restaurant';
+      let subRole = metadata.sub_role || null;
 
       const emailLower = email.toLowerCase();
       if (emailLower === 'imsnsylla@gmail.com' || emailLower === 'bahsyllah223@gmail.com' || emailLower === 'ursula@master.com') {
         role = 'master';
       }
-      
-      let storeName = metadata.store_name || 'Cloud Store';
+
+      // Check user_roles table on Supabase — pick highest-priority role
+      try {
+        const { data: rolesData, error: rolesError } = await supabase
+          .from('user_roles')
+          .select('role, store_id, sub_role')
+          .eq('user_id', data.user.id);
+        
+        if (rolesError) {
+          console.error('[AuthContext] user_roles query failed:', rolesError);
+        } else if (rolesData && rolesData.length > 0) {
+          // Always pick the highest-privilege role (master > worker > deliverer > customer)
+          // rolesData[0] alone is unsafe because the signup trigger inserts a 'customer' row
+          // automatically, which can appear before the actual 'worker' or 'master' row.
+          const ROLE_PRIORITY: Record<string, number> = {
+            master: 4,
+            worker: 3,
+            cashier: 3,
+            cook: 3,
+            waiter: 3,
+            waiters: 3,
+            deliverer: 2,
+            customer: 1,
+          };
+          const bestRow = rolesData.reduce((best, current) => {
+            const bestP = ROLE_PRIORITY[best.role] ?? 0;
+            const currP = ROLE_PRIORITY[current.role] ?? 0;
+            return currP > bestP ? current : best;
+          });
+          console.log('[AuthContext] All user_roles rows:', rolesData, '→ selected:', bestRow);
+          role = bestRow.role || role;
+          subRole = bestRow.sub_role || subRole;
+          if (bestRow.store_id) {
+            storeId = bestRow.store_id;
+          }
+        }
+      } catch (e) {
+        console.warn('[AuthContext] Exception fetching roles from supabase', e);
+      }
+
+      // Only check store/restaurant ownership if we have NO role yet from user_roles.
+      // A confirmed 'worker' from user_roles must NOT be overridden by store ownership.
+      if (!role) {
+        try {
+          // Check stores table first (primary retail/hardware table)
+          const { data: ownedStores, error: storesError } = await supabase
+            .from('stores')
+            .select('*')
+            .eq('owner_id', data.user.id)
+            .limit(1);
+          
+          if (!storesError && ownedStores && ownedStores.length > 0) {
+            role = 'master';
+            storeId = ownedStores[0].id;
+            storeName = ownedStores[0].name || storeName;
+          } else {
+            // Fallback check on restaurants table for food/restaurant accounts
+            const { data: ownedRestos } = await supabase
+              .from('restaurants')
+              .select('*')
+              .eq('owner_id', data.user.id)
+              .limit(1);
+            if (ownedRestos && ownedRestos.length > 0) {
+              role = 'master';
+              storeId = ownedRestos[0].id;
+              storeName = ownedRestos[0].name || storeName;
+            }
+          }
+        } catch (e) {
+          console.warn('[AuthContext] Exception checking owned stores/restaurants', e);
+        }
+      }
+
+      // Still no role from the authoritative sources — fall back to auth
+      // metadata, which is all that existing installs carry (they have no
+      // user_roles rows yet), so a present, recognised metadata role must keep
+      // working.
+      if (!role) {
+        const metaRole = asAppRole(metadata.role);
+        if (metaRole) {
+          console.log('[AuthContext] No role in user_roles/stores — using auth metadata role:', metaRole);
+          role = metaRole;
+        }
+      }
+
+      // If STILL no role, default to least privilege
+      if (!role) {
+        console.warn(
+          '[AuthContext][roles] No role in user_roles, stores, or metadata — defaulting to least privilege:',
+          LEAST_PRIVILEGED_ROLE
+        );
+        role = LEAST_PRIVILEGED_ROLE;
+      }
+
+      // Ensure master users have a storeId
+      if (!storeId) {
+        try {
+          // Query stores first
+          const { data: stores, error: storesErr } = await supabase
+            .from('stores')
+            .select('*')
+            .order('name');
+          
+          if (!storesErr && stores && stores.length > 0) {
+            const target = stores[0];
+            storeId = target.id;
+            storeName = target.name || 'Djati Store';
+            console.log('[AuthContext] Resolved store from cloud:', storeName, storeId);
+          } else {
+            // Fallback to restaurants for restaurant accounts
+            const { data: restos } = await supabase
+              .from('restaurants')
+              .select('*')
+              .order('name');
+            if (restos && restos.length > 0) {
+              const target = restos[0];
+              storeId = target.id;
+              storeName = target.name || 'Djati Restaurant';
+              console.log('[AuthContext] Resolved restaurant from cloud:', storeName, storeId);
+            }
+          }
+        } catch (e) {
+          console.warn('[AuthContext] Exception checking stores/restaurants', e);
+        }
+      }
 
       if (!storeId && role === 'master') {
-        // Dynamically generate a store_id for a new master user if not pre-configured
+        // Dynamically generate a store_id for a new master user only as an absolute offline fallback
         storeId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' 
           ? crypto.randomUUID() 
           : 'store-' + Math.random().toString(36).substring(2, 15);
-        storeName = 'Retail Store';
+        storeName = 'Djati Store';
         console.log('[AuthContext] Dynamically generated storeId for master:', storeId);
       }
 
       if (!storeId) {
-        return { error: 'Cloud account is missing required store association (store_id).' };
+        return { error: 'Cloud account is missing required store association (store_id metadata).' };
       }
 
-      // 3. Send credentials to local bridge
-      const response = await smartFetch(`${dataClient.localBridgeBaseUrl}/auth/bootstrap-cloud`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: data.user.id,
-          email,
-          password,
-          full_name: fullName,
-          role,
-          store_id: storeId,
-          store_name: storeName,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let message = 'Failed to bootstrap account locally.';
+      // Always sync user metadata to keep it up-to-date with user_roles table
+      if (metadata.role !== role || metadata.store_id !== storeId) {
+        console.log('[AuthContext] Syncing Supabase user metadata — role:', role, 'store_id:', storeId);
         try {
-          const parsedErr = JSON.parse(errorText);
-          message = parsedErr.message || parsedErr.error || message;
-        } catch (e) {}
-        return { error: message };
+          await supabase.auth.updateUser({
+            data: {
+              store_id: storeId,
+              role: role
+            }
+          });
+          await supabase.auth.refreshSession();
+        } catch (metaErr) {
+          console.error('[AuthContext] Failed to update user metadata on Supabase during bootstrap:', metaErr);
+        }
+      }
+
+      if (dataClient.isLocalFirst) {
+        // 3. Send credentials to local bridge
+        const response = await smartFetch(`${dataClient.localBridgeBaseUrl}/auth/bootstrap-cloud`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: data.user.id,
+            email,
+            password,
+            full_name: fullName,
+            role,
+            sub_role: subRole,
+            store_id: storeId,
+            store_name: storeName,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          let message = 'Failed to bootstrap account locally.';
+          try {
+            const parsedErr = JSON.parse(errorText);
+            message = parsedErr.message || parsedErr.error || message;
+          } catch (e) {}
+          return { error: message };
+        }
+      } else {
+        // Pure Cloud: Save session to LocalDatabase (IndexedDB) directly
+        await OfflineAuthService.saveOfflineSession(data.user, data.session, role, storeId, fullName, password, subRole);
       }
 
       // 4. Sign in locally now that it has been bootstrapped
@@ -671,10 +822,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .select('*')
             .eq('user_id', data.user.id);
 
+          let userRoles: UserRole[] = [];
+
+          if (rolesData && rolesData.length > 0) {
+            userRoles = rolesData.map((r: any) => ({
+              id: r.id,
+              user_id: r.user_id,
+              role: r.role as AppRole,
+              store_id: r.store_id || undefined,
+              sub_role: r.sub_role || undefined,
+              created_at: r.created_at,
+            }));
+          } else {
+            // Fallback to user_metadata or default master role
+            const metaRole = asAppRole(data.user.user_metadata?.role) || 'master';
+            userRoles = [{
+              id: 'meta-role',
+              user_id: data.user.id,
+              role: metaRole,
+              store_id: data.user.user_metadata?.store_id || undefined,
+              sub_role: data.user.user_metadata?.sub_role || undefined,
+              created_at: data.user.created_at,
+            }];
+          }
+
+          // If store_id is not set, resolve the first store
+          if (!userRoles[0].store_id) {
+            try {
+              const { data: storesList } = await supabase
+                .from('stores')
+                .select('id, name')
+                .order('name')
+                .limit(1);
+              if (storesList && storesList.length > 0) {
+                userRoles[0].store_id = storesList[0].id;
+              }
+            } catch (e) {
+              console.warn('[AuthContext] Exception finding default store:', e);
+            }
+          }
+
           result = {
             user: data.user,
             session: data.session,
-            roles: rolesData || [],
+            roles: userRoles,
             isOffline: false,
           };
         }
@@ -692,14 +883,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (result.error && navigator.onLine) {
         console.log('🔄 Local sign in failed but online. Attempting cloud bootstrap fallback...');
         const fallbackResult = await runCloudBootstrapFlow(email, password);
-        if (!fallbackResult.error) {
-          result = fallbackResult;
-        }
+        result = fallbackResult;
       }
     }
 
     console.log('🔑 AuthContext.signIn result:', result);
-
 
     if (result.error) {
       toast({
@@ -711,30 +899,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (result.user && result.session) {
+      // Roles from OfflineAuthService.signIn are already ROLE_PRIORITY-selected and correct.
+      // Set them immediately and clear rolesLoading so the UI can render without waiting.
       setUser(result.user);
       setSession(result.session);
 
-      // Sync with global Supabase client in cloud mode. A placeholder offline
-      // token would leave the client anonymous and make RLS reject writes, so
-      // only push a real JWT; warn otherwise instead of failing silently.
+      // Sync with global Supabase client in cloud mode
       if (result.session && !dataClient.isLocalFirst) {
-        if (isJwt(result.session.access_token)) {
-          console.log('[AuthContext] Syncing Supabase client session on sign in');
-          try {
-            await supabase.auth.setSession({
-              access_token: result.session.access_token,
-              refresh_token: result.session.refresh_token,
-            });
-          } catch (e) {
-            console.warn('[AuthContext] Failed to sync signed in session to Supabase client:', e);
-          }
-        } else {
-          console.warn('[AuthContext] Signed in without a Supabase JWT (offline cache) — cloud writes will be blocked by RLS until an online sign in.');
+        console.log('[AuthContext] Syncing Supabase client session on sign in');
+        try {
+          await supabase.auth.setSession({
+            access_token: result.session.access_token,
+            refresh_token: result.session.refresh_token,
+          });
+        } catch (e) {
+          console.warn('[AuthContext] Failed to sync signed in session to Supabase client:', e);
         }
       }
 
       setRoles(result.roles);
       setIsOffline(result.isOffline);
+      // rolesLoading stays false — the UI shows immediately with the correct roles.
+      // Fire a non-blocking background refresh to sync any server-side role changes.
+      if (navigator.onLine) {
+        setTimeout(() => {
+          fetchUserRoles(result.user!.id).catch(e =>
+            console.warn('[AuthContext] Background role refresh failed:', e)
+          );
+        }, 500);
+      }
 
       toast({
         title: result.isOffline ? 'Signed In (Offline)' : 'Welcome back!',
@@ -911,9 +1104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null);
       setRoles([]);
 
-      if (!dataClient.isLocalFirst) {
-        await supabase.auth.signOut().catch(e => console.warn('[AuthContext] Failed to sign out of Supabase client:', e));
-      }
+      await supabase.auth.signOut().catch(e => console.warn('[AuthContext] Failed to sign out of Supabase client:', e));
       
       toast({
         title: 'Signed Out',

@@ -1,38 +1,155 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import {
+  REGISTERED_TENANTS,
+  TenantConfig,
+  detectInitialTenantId,
+  predictTenantByEmail
+} from './tenants';
 
-export const FALLBACK_SUPABASE_URL = "https://fpvrbxmbrotowdlyebqv.supabase.co";
-export const FALLBACK_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwdnJieG1icm90b3dkbHllYnF2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNzE1MjMsImV4cCI6MjA5NjY0NzUyM30.8_mjBGr1FpYE20cc22iehEf0Xi9Fix2M0d_SSHIDQuI";
+export const FALLBACK_SUPABASE_URL = REGISTERED_TENANTS.stihl.supabaseUrl;
+export const FALLBACK_SUPABASE_ANON_KEY = REGISTERED_TENANTS.stihl.supabaseAnonKey;
 
+const STORAGE_KEY = 'djati_active_tenant';
 
+// Map of instantiated Supabase clients per tenant
+const clientMap = new Map<string, SupabaseClient>();
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || FALLBACK_SUPABASE_URL;
-
-// Accept either key name for flexibility
-const supabaseAnonKey = (
-  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
-  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ||
-  FALLBACK_SUPABASE_ANON_KEY
-);
-
-if (!supabaseUrl) {
-  throw new Error(
-    '[supabase.ts] VITE_SUPABASE_URL is not set. Check frontend/.env'
-  );
+function getOrCreateClient(config: TenantConfig): SupabaseClient {
+  let client = clientMap.get(config.id);
+  if (!client) {
+    client = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+      },
+    });
+    clientMap.set(config.id, client);
+  }
+  return client;
 }
-if (!supabaseAnonKey) {
-  throw new Error(
-    '[supabase.ts] Neither VITE_SUPABASE_PUBLISHABLE_KEY nor VITE_SUPABASE_ANON_KEY is set. Check frontend/.env'
-  );
+
+// Pre-initialize clients
+for (const config of Object.values(REGISTERED_TENANTS)) {
+  getOrCreateClient(config);
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10,
-    },
+let activeTenantId = detectInitialTenantId();
+
+export function getActiveTenantId(): string {
+  return activeTenantId;
+}
+
+export function getActiveTenant(): TenantConfig {
+  return REGISTERED_TENANTS[activeTenantId] || REGISTERED_TENANTS['stihl'];
+}
+
+export function getActiveTenantSupabaseUrl(): string {
+  return getActiveTenant().supabaseUrl;
+}
+
+export function setActiveTenant(tenantId: string): void {
+  if (REGISTERED_TENANTS[tenantId]) {
+    activeTenantId = tenantId;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, tenantId);
+    }
+    console.log(`🏢 [MultiTenant] Active tenant switched to: ${REGISTERED_TENANTS[tenantId].name} (${tenantId})`);
+  }
+}
+
+export function getTenantClient(tenantId: string): SupabaseClient {
+  const config = REGISTERED_TENANTS[tenantId] || getActiveTenant();
+  return getOrCreateClient(config);
+}
+
+// Hard cap on how many tenant backends a single login attempt will send the
+// user's password to. Keeps the fan-out bounded as REGISTERED_TENANTS grows,
+// instead of broadcasting credentials to every registered org.
+const MAX_CASCADE_CANDIDATES = 3;
+
+/**
+ * Executes a cascade sign-in across tenants based on the user's email:
+ * 1. Checks if email matches known tenant domains/emails.
+ * 2. If not, attempts sign-in on the active tenant.
+ * 3. If invalid credentials, cascades to up to MAX_CASCADE_CANDIDATES other
+ *    registered tenants (bounded fan-out, not every tenant unconditionally).
+ * 4. On success, permanently switches the active tenant and returns the session.
+ */
+async function cascadeSignInWithPassword(credentials: { email: string; password: string }) {
+  const { email, password } = credentials;
+  const cleanEmail = email.trim();
+
+  // 1. Prediction by domain or email
+  const predictedId = predictTenantByEmail(cleanEmail);
+  const candidates: string[] = [];
+
+  if (predictedId && REGISTERED_TENANTS[predictedId]) {
+    candidates.push(predictedId);
+  } else {
+    if (!candidates.includes(activeTenantId)) {
+      candidates.push(activeTenantId);
+    }
+    for (const id of Object.keys(REGISTERED_TENANTS)) {
+      if (!candidates.includes(id)) {
+        candidates.push(id);
+      }
+    }
+  }
+
+  let lastError: any = null;
+
+  for (const tenantId of candidates) {
+    const config = REGISTERED_TENANTS[tenantId];
+    const client = getOrCreateClient(config);
+
+    try {
+      const result = await client.auth.signInWithPassword({ email: cleanEmail, password });
+
+      if (!result.error && result.data.user) {
+        console.log(`🏢 [MultiTenant Auth] Activating tenant: ${config.shortName}`);
+        setActiveTenant(tenantId);
+        return result;
+      }
+
+      lastError = result.error;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  return {
+    data: { user: null, session: null },
+    error: lastError || new Error('Identifiants de connexion invalides.'),
+  };
+}
+
+/**
+ * Proxy Supabase client that dynamically delegates to the active tenant's client.
+ * Seamlessly intercepts `auth.signInWithPassword` to perform transparent multi-tenant cascade.
+ */
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop: string | symbol) {
+    const activeClient = getOrCreateClient(getActiveTenant());
+
+    if (prop === 'auth') {
+      const activeAuth = activeClient.auth;
+      return new Proxy(activeAuth, {
+        get(authTarget, authProp: string | symbol) {
+          if (authProp === 'signInWithPassword') {
+            return cascadeSignInWithPassword;
+          }
+          const val = (authTarget as any)[authProp];
+          return typeof val === 'function' ? val.bind(authTarget) : val;
+        },
+      });
+    }
+
+    const val = (activeClient as any)[prop];
+    return typeof val === 'function' ? val.bind(activeClient) : val;
   },
 });

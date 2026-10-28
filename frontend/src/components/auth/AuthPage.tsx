@@ -9,15 +9,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Store, Wifi, WifiOff, Cloud, AlertCircle, Info } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { InvitationService } from '@/services/InvitationService';
 import { useToast } from '@/hooks/use-toast';
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher';
 import { useDevice } from '@/contexts/DeviceContext';
-import { MobileAuthPage } from '../mobile/Auth/MobileAuthPage';
-import { getDataClient } from '@/lib/dataClient';
+import { cn } from '@/lib/utils';
+import { MobileAuthPage } from '@/components/mobile/Auth/MobileAuthPage';
+import { predictTenantByEmail } from '@/lib/tenants';
+import { setActiveTenant } from '@/lib/supabase';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -43,13 +44,10 @@ export default function AuthPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { user, signIn, signUp, rolesLoading, hasRole, roles, loading: authLoading, devLogin, isBackendReady, isBootstrapped, isOffline } = useAuth();
+  const { user, signIn, signUp, rolesLoading, hasRole, roles, loading: authLoading, devLogin, isBackendReady, isBootstrapped } = useAuth();
   const { isDesktop } = useDevice();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const dataClient = getDataClient();
-  const isLocalFirst = dataClient.isLocalFirst;
 
   // Check for invitation token
   const invitationToken = searchParams.get('token');
@@ -64,6 +62,22 @@ export default function AuthPage() {
     confirmPassword: '',
     fullName: ''
   });
+
+  useEffect(() => {
+    if (loginData.email) {
+      const predicted = predictTenantByEmail(loginData.email);
+      if (predicted) {
+        setActiveTenant(predicted);
+      }
+    }
+  }, [loginData.email]);
+
+  // "Signup" on local-first installs IS the first-run master+store bootstrap
+  // (AuthContext.signUp -> OfflineAuthService.bootstrapMaster), not a public
+  // worker self-registration form. Once this install already has a master
+  // account, there is nothing left to bootstrap, so the tab must disappear -
+  // a cashier logging in later should only ever see Sign In.
+  const canSignUp = !isBootstrapped || !!invitationToken;
 
   useEffect(() => {
     console.log('🔐 AuthPage useEffect - user:', !!user, 'rolesLoading:', rolesLoading, 'roles.length:', roles.length, 'authLoading:', authLoading, 'fromGetStarted:', fromGetStarted);
@@ -101,7 +115,7 @@ export default function AuthPage() {
       const { error } = await signIn(loginData.email, loginData.password);
 
       if (error) {
-        setErrors({ form: typeof error === 'object' && error.message ? error.message : String(error) });
+        setErrors({ form: error.message });
         setLoading(false);
       } else {
         // If no error, we expect roles to load via context
@@ -116,7 +130,7 @@ export default function AuthPage() {
            // We can check user roles from context? No, closure stale.
            // But if we are here, we can assume something went wrong with role assignment
            // or we are just waiting.
-           // Better: rely on useEffect to redirect. 
+           // Better: rely on useEffect to redirect.
            // If we stop loading, the user sees the form again "signed in".
         }, 5000);
       }
@@ -150,7 +164,7 @@ export default function AuthPage() {
       );
 
       if (error) {
-        setErrors({ form: typeof error === 'object' && error.message ? error.message : String(error) });
+        setErrors({ form: error.message });
         setLoading(false);
         return;
       }
@@ -196,9 +210,11 @@ export default function AuthPage() {
     );
   }
 
+  // If no user and auth check is complete, show the form (handled by return below)
+
   if (!isDesktop) {
     return (
-      <MobileAuthPage 
+      <MobileAuthPage
         loginData={loginData}
         setLoginData={setLoginData}
         signupData={signupData}
@@ -207,6 +223,7 @@ export default function AuthPage() {
         handleSignup={handleSignup}
         loading={loading}
         errors={errors}
+        canSignUp={canSignUp}
       />
     );
   }
@@ -228,48 +245,15 @@ export default function AuthPage() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="login" className="w-full">
-            {!isBootstrapped ? (
-              <div className="flex items-center justify-between border-b pb-2 mb-4">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Activation de Compte</span>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary">
-                  <Cloud className="h-3.5 w-3.5 animate-pulse" />
-                  Internet Requis
-                </div>
-              </div>
-            ) : (
+            {canSignUp ? (
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="login">{t('auth.login')}</TabsTrigger>
                 <TabsTrigger value="signup">{t('auth.signup')}</TabsTrigger>
               </TabsList>
-            )}
+            ) : null}
 
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-4">
-                {isLocalFirst && (
-                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-600 dark:text-amber-400 space-y-2 mb-4">
-                    <div className="flex items-center gap-2 font-bold">
-                      <AlertCircle className="h-4.5 w-4.5" />
-                      <span>{!isBootstrapped ? "Configuration de Premier Démarrage" : "État du Système (Mode Hors-ligne)"}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      {!isBootstrapped 
-                        ? "L'application a besoin d'Internet pour se lier à votre compte pré-configuré (\"Designed Account\") et charger les données de votre magasin."
-                        : "Vos identifiants sont sauvegardés localement. Vous pouvez vous connecter même sans connexion Internet."}
-                    </p>
-                    <div className="flex items-center gap-2 pt-1 border-t border-amber-500/10 mt-2">
-                      {!isOffline ? (
-                        <span className="flex items-center gap-1 text-xs text-emerald-500 font-semibold">
-                          <Wifi className="h-3.5 w-3.5" /> Connecté à Internet
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-xs text-destructive font-bold animate-pulse">
-                          <WifiOff className="h-3.5 w-3.5" /> Hors ligne (Mode Local Actif)
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 <div className="space-y-2">
                   <Label htmlFor="login-email">{t('auth.email')}</Label>
                   <Input
@@ -306,128 +290,103 @@ export default function AuthPage() {
                   <p className="text-sm text-destructive">{errors.form}</p>
                 )}
 
-                <Button type="submit" className="w-full font-bold uppercase tracking-wide" disabled={loading}>
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {!isBootstrapped ? "Activation en cours..." : t('auth.signingIn')}
-                    </>
-                  ) : (
-                    !isBootstrapped ? "Activer & Synchroniser" : t('auth.signIn')
-                  )}
-                </Button>
-              </form>
-
-              {import.meta.env.DEV && (
-                <div className="mt-4 pt-4 border-t border-dashed">
-                  <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide font-semibold">
-                    Dev Mode (bypasses Supabase auth, local only)
-                  </p>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => devLogin('master')}>
-                      Master
-                    </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={() => devLogin('worker')}>
-                      Worker
-                    </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={() => devLogin('deliverer')}>
-                      Deliverer
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="signup">
-              <Alert className="mb-6 bg-blue-50/50 text-blue-800 border-blue-200">
-                <Info className="h-4 w-4 text-blue-600" />
-                <AlertTitle>Création de compte</AlertTitle>
-                <AlertDescription className="text-sm mt-1">
-                  Si vous êtes un employé, veuillez demander à votre administrateur de créer votre compte depuis le tableau de bord. Si vous êtes un administrateur créant un nouveau compte Master, vous pouvez continuer ci-dessous.
-                </AlertDescription>
-              </Alert>
-
-              <form onSubmit={handleSignup} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-name">{t('auth.fullName')}</Label>
-                  <Input
-                    id="signup-name"
-                    type="text"
-                    placeholder="John Doe"
-                    value={signupData.fullName}
-                    onChange={(e) => setSignupData({ ...signupData, fullName: e.target.value })}
-                    disabled={loading}
-                    className={errors.fullName ? 'border-destructive' : ''}
-                  />
-                  {errors.fullName && (
-                    <p className="text-sm text-destructive">{errors.fullName}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">{t('auth.email')}</Label>
-                  <Input
-                    id="signup-email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={signupData.email}
-                    onChange={(e) => setSignupData({ ...signupData, email: e.target.value })}
-                    disabled={loading}
-                    className={errors.email ? 'border-destructive' : ''}
-                  />
-                  {errors.email && (
-                    <p className="text-sm text-destructive">{errors.email}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">{t('auth.password')}</Label>
-                  <Input
-                    id="signup-password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={signupData.password}
-                    onChange={(e) => setSignupData({ ...signupData, password: e.target.value })}
-                    disabled={loading}
-                    className={errors.password ? 'border-destructive' : ''}
-                  />
-                  {errors.password && (
-                    <p className="text-sm text-destructive">{errors.password}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="signup-confirm">{t('auth.confirmPassword')}</Label>
-                  <Input
-                    id="signup-confirm"
-                    type="password"
-                    placeholder="••••••••"
-                    value={signupData.confirmPassword}
-                    onChange={(e) => setSignupData({ ...signupData, confirmPassword: e.target.value })}
-                    disabled={loading}
-                    className={errors.confirmPassword ? 'border-destructive' : ''}
-                  />
-                  {errors.confirmPassword && (
-                    <p className="text-sm text-destructive">{errors.confirmPassword}</p>
-                  )}
-                </div>
-
-                {errors.form && (
-                  <p className="text-sm text-destructive">{errors.form}</p>
-                )}
-
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {t('auth.creatingAccount')}
+                      {t('auth.signingIn')}
                     </>
                   ) : (
-                    t('auth.createAccount')
+                    t('auth.signIn')
                   )}
                 </Button>
               </form>
             </TabsContent>
+
+            {canSignUp && (
+              <TabsContent value="signup">
+                <form onSubmit={handleSignup} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-name">{t('auth.fullName')}</Label>
+                    <Input
+                      id="signup-name"
+                      type="text"
+                      placeholder="John Doe"
+                      value={signupData.fullName}
+                      onChange={(e) => setSignupData({ ...signupData, fullName: e.target.value })}
+                      disabled={loading}
+                      className={errors.fullName ? 'border-destructive' : ''}
+                    />
+                    {errors.fullName && (
+                      <p className="text-sm text-destructive">{errors.fullName}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-email">{t('auth.email')}</Label>
+                    <Input
+                      id="signup-email"
+                      type="email"
+                      placeholder="you@example.com"
+                      value={signupData.email}
+                      onChange={(e) => setSignupData({ ...signupData, email: e.target.value })}
+                      disabled={loading}
+                      className={errors.email ? 'border-destructive' : ''}
+                    />
+                    {errors.email && (
+                      <p className="text-sm text-destructive">{errors.email}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password">{t('auth.password')}</Label>
+                    <Input
+                      id="signup-password"
+                      type="password"
+                      placeholder="••••••••"
+                      value={signupData.password}
+                      onChange={(e) => setSignupData({ ...signupData, password: e.target.value })}
+                      disabled={loading}
+                      className={errors.password ? 'border-destructive' : ''}
+                    />
+                    {errors.password && (
+                      <p className="text-sm text-destructive">{errors.password}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-confirm">{t('auth.confirmPassword')}</Label>
+                    <Input
+                      id="signup-confirm"
+                      type="password"
+                      placeholder="••••••••"
+                      value={signupData.confirmPassword}
+                      onChange={(e) => setSignupData({ ...signupData, confirmPassword: e.target.value })}
+                      disabled={loading}
+                      className={errors.confirmPassword ? 'border-destructive' : ''}
+                    />
+                    {errors.confirmPassword && (
+                      <p className="text-sm text-destructive">{errors.confirmPassword}</p>
+                    )}
+                  </div>
+
+                  {errors.form && (
+                    <p className="text-sm text-destructive">{errors.form}</p>
+                  )}
+
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {t('auth.creatingAccount')}
+                      </>
+                    ) : (
+                      t('auth.createAccount')
+                    )}
+                  </Button>
+                </form>
+              </TabsContent>
+            )}
           </Tabs>
         </CardContent>
       </Card>

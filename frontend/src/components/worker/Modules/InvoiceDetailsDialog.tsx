@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { OfflineStoreService } from '@/services/OfflineStoreService';
 import {
   Dialog,
   DialogContent,
@@ -11,8 +12,6 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { SaleWithItems } from '@/services/OfflineDataService';
-import { format } from 'date-fns';
-import { fr, enUS } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 import { useFormatters } from '@/utils/formatting';
 import { Printer, FileText } from 'lucide-react';
@@ -26,11 +25,19 @@ interface InvoiceDetailsDialogProps {
 }
 
 export function InvoiceDetailsDialog({ sale, onClose }: InvoiceDetailsDialogProps) {
-  const { t, i18n } = useTranslation();
-  const { formatCurrency } = useFormatters();
+  const { t } = useTranslation();
+  const { formatCurrency, formatDate } = useFormatters();
+  const [store, setStore] = useState<any>(null);
 
   const thermalRef = useRef<HTMLDivElement>(null);
   const a4Ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!sale?.store_id) return;
+    OfflineStoreService.getStore(sale.store_id)
+      .then(({ data }) => data && setStore(data))
+      .catch((error) => console.error('[InvoiceDetailsDialog] Store fetch error:', error));
+  }, [sale?.store_id]);
 
   const printThermal = useReactToPrint({
     contentRef: thermalRef,
@@ -43,11 +50,6 @@ export function InvoiceDetailsDialog({ sale, onClose }: InvoiceDetailsDialogProp
   });
 
   if (!sale) return null;
-
-  const getLocale = () => {
-    if (i18n.language === 'fr' || i18n.language === 'bm') return fr;
-    return enUS;
-  };
 
   // Build InvoiceData from the SaleWithItems record
   const saleItems = (sale.items?.length ? sale.items : sale.sale_items) || [];
@@ -71,8 +73,8 @@ export function InvoiceDetailsDialog({ sale, onClose }: InvoiceDetailsDialogProp
     id: sale.id,
     invoice_number: sale.invoice_number || sale.id.slice(0, 8),
     order_ref: sale.order_ref || undefined,
-    storeName: 'Quincaillerie De La Paix',
-    storeAddress: 'Face à Djoliba, près du Trésor',
+    storeName: store?.name || t('index.title'),
+    storeAddress: store?.address || undefined,
     workerName: undefined,
     customerName: sale.customer_name || undefined,
     customerPhone: sale.customer_phone || undefined,
@@ -92,7 +94,7 @@ export function InvoiceDetailsDialog({ sale, onClose }: InvoiceDetailsDialogProp
             <div className="flex items-center gap-2">
               <span>{t('sales.invoice_number')}: {sale.invoice_number || sale.id.slice(0, 8)}</span>
               <span className="text-sm font-normal text-muted-foreground">
-                - {format(new Date(sale.created_at), 'PPP p', { locale: getLocale() })}
+                - {formatDate(sale.created_at, 'PPP p')}
               </span>
             </div>
             {sale.order_ref && (
@@ -125,7 +127,7 @@ export function InvoiceDetailsDialog({ sale, onClose }: InvoiceDetailsDialogProp
               )}
 
               <div className="flex flex-col items-end">
-                <Badge variant={sale.payment_method === 'credit' ? 'destructive' : 'default'} className={`uppercase text-[10px] mb-1 ${sale.payment_method !== 'credit' ? 'bg-success text-white border-transparent' : ''}`}>
+                <Badge variant={sale.payment_method === 'credit' ? 'destructive' : 'success'} className="uppercase text-[10px] mb-1">
                   {sale.payment_method === 'credit' ? t('common.credit') : t('common.cash')}
                 </Badge>
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter opacity-60">{sale.payment_status}</p>
