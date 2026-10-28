@@ -92,6 +92,8 @@ foreach ($item in $architectures) {
     $bs3_dest = "$staging\node_modules\better-sqlite3\build\Release"
     if (!(Test-Path $bs3_dest)) { New-Item -ItemType Directory -Path $bs3_dest -Force }
     Copy-Item "$bs3_extract\build\Release\better_sqlite3.node" -Destination "$bs3_dest\better_sqlite3.node" -Force
+    if (!(Test-Path $TAURI_BIN_DIR)) { New-Item -ItemType Directory -Path $TAURI_BIN_DIR }
+    Copy-Item "$bs3_extract\build\Release\better_sqlite3.node" -Destination "$TAURI_BIN_DIR\better_sqlite3.node" -Force
     
     # d. Create payload zip
     $payload_name = "payload-$triple.zip"
@@ -102,6 +104,7 @@ foreach ($item in $architectures) {
     Write-Host "Zipping payload (using tar for speed)..."
     tar.exe -a -cf $payload_path *
     Pop-Location
+    Copy-Item $payload_path -Destination "$BACKEND_DIR\payload.zip" -Force
     
     # e. Compile Wrapper for this target
     Write-Host "Compiling Rust Wrapper for $triple..." -ForegroundColor Yellow
