@@ -13,6 +13,7 @@ import { LocalDatabase } from '@/services/LocalDatabase';
 import { OfflineAuthService } from '@/services/OfflineAuthService';
 import { LocalBridgeSyncService, type NetworkHealthStatus } from '@/services/LocalBridgeSyncService';
 import { toast } from 'sonner';
+import { getActiveTenant } from '@/lib/supabase';
 
 interface WorkerStatusBarProps {
   storeName: string;
@@ -103,13 +104,25 @@ export function WorkerStatusBar({ storeName, userEmail, activeModule, onLogout, 
 
   return (
     <footer className="h-8 bg-[hsl(180,80%,40%)] dark:bg-card/80 border-t border-primary/30 flex items-center px-2 text-xs shrink-0">
-      {/* Store Name */}
+      {/* Store Name & Active Organization */}
       <div className="flex items-center gap-2 min-w-[200px]">
         <HardDrive className="h-3.5 w-3.5 text-primary-foreground/70 dark:text-primary" />
         <span className="font-medium text-primary-foreground dark:text-foreground truncate">
           {storeName || t('index.title')}
           <span className="font-mono opacity-50 ml-2 text-[10px]">v{import.meta.env.VITE_APP_VERSION || 'dev'}</span>
         </span>
+        {(() => {
+          const activeTenant = getActiveTenant();
+          return activeTenant ? (
+            <span 
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-black/20 text-primary-foreground border border-white/20 animate-in fade-in duration-300 ml-1"
+              title={`Organisation: ${activeTenant.name}`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: activeTenant.accentColor }} />
+              {activeTenant.shortName}
+            </span>
+          ) : null;
+        })()}
       </div>
 
       {/* Keyboard Shortcuts */}

@@ -17,7 +17,7 @@ import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher';
 import { useDevice } from '@/contexts/DeviceContext';
 import { cn } from '@/lib/utils';
 import { MobileAuthPage } from '@/components/mobile/Auth/MobileAuthPage';
-import { predictTenantByEmail } from '@/lib/tenants';
+import { predictTenantByEmail, REGISTERED_TENANTS } from '@/lib/tenants';
 import { setActiveTenant } from '@/lib/supabase';
 
 const loginSchema = z.object({
@@ -62,6 +62,11 @@ export default function AuthPage() {
     confirmPassword: '',
     fullName: ''
   });
+
+  const detectedTenantId = loginData.email ? predictTenantByEmail(loginData.email) : null;
+  const detectedTenant = detectedTenantId ? REGISTERED_TENANTS[detectedTenantId] : null;
+  const detectedSignupTenantId = signupData.email ? predictTenantByEmail(signupData.email) : null;
+  const detectedSignupTenant = detectedSignupTenantId ? REGISTERED_TENANTS[detectedSignupTenantId] : null;
 
   useEffect(() => {
     if (loginData.email) {
@@ -265,6 +270,12 @@ export default function AuthPage() {
                     disabled={loading}
                     className={errors.email ? 'border-destructive' : ''}
                   />
+                  {detectedTenant && (
+                    <div className="flex items-center gap-2 text-xs font-semibold px-2.5 py-1.5 rounded-md bg-muted/70 border border-muted-foreground/20 text-foreground animate-in fade-in duration-200">
+                      <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-xs" style={{ backgroundColor: detectedTenant.accentColor }} />
+                      <span className="truncate">{detectedTenant.name}</span>
+                    </div>
+                  )}
                   {errors.email && (
                     <p className="text-sm text-destructive">{errors.email}</p>
                   )}
@@ -333,6 +344,12 @@ export default function AuthPage() {
                       disabled={loading}
                       className={errors.email ? 'border-destructive' : ''}
                     />
+                    {detectedSignupTenant && (
+                      <div className="flex items-center gap-2 text-xs font-semibold px-2.5 py-1.5 rounded-md bg-muted/70 border border-muted-foreground/20 text-foreground animate-in fade-in duration-200">
+                        <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-xs" style={{ backgroundColor: detectedSignupTenant.accentColor }} />
+                        <span className="truncate">{detectedSignupTenant.name}</span>
+                      </div>
+                    )}
                     {errors.email && (
                       <p className="text-sm text-destructive">{errors.email}</p>
                     )}

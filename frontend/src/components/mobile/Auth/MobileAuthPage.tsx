@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import logoUrl from '@/assets/logo.png';
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher';
-import { predictTenantByEmail } from '@/lib/tenants';
+import { predictTenantByEmail, REGISTERED_TENANTS } from '@/lib/tenants';
 import { setActiveTenant } from '@/lib/supabase';
 
 export interface MobileAuthPageProps {
@@ -32,6 +32,9 @@ export function MobileAuthPage({
 }: MobileAuthPageProps) {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
+    const activeEmail = activeTab === 'signup' ? signupData?.email : loginData?.email;
+    const detectedTenantId = activeEmail ? predictTenantByEmail(activeEmail) : null;
+    const detectedTenant = detectedTenantId ? REGISTERED_TENANTS[detectedTenantId] : null;
 
     useEffect(() => {
         if (loginData.email) {
@@ -112,6 +115,12 @@ export function MobileAuthPage({
                                     disabled={loading}
                                 />
                             </div>
+                            {detectedTenant && (
+                                <div className="flex items-center gap-2 text-xs font-semibold px-2.5 py-1.5 rounded-md bg-rs-surface-container border border-rs-outline/30 text-rs-on-surface mt-1.5 animate-in fade-in duration-200">
+                                    <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-xs" style={{ backgroundColor: detectedTenant.accentColor }} />
+                                    <span className="truncate">{detectedTenant.name}</span>
+                                </div>
+                            )}
                             {errors.email && <p className="text-xs text-rs-error pl-1">{errors.email}</p>}
                         </div>
 
@@ -193,6 +202,12 @@ export function MobileAuthPage({
                                     disabled={loading}
                                 />
                             </div>
+                            {detectedTenant && (
+                                <div className="flex items-center gap-2 text-xs font-semibold px-2.5 py-1.5 rounded-md bg-rs-surface-container border border-rs-outline/30 text-rs-on-surface mt-1.5 animate-in fade-in duration-200">
+                                    <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-xs" style={{ backgroundColor: detectedTenant.accentColor }} />
+                                    <span className="truncate">{detectedTenant.name}</span>
+                                </div>
+                            )}
                             {errors.email && <p className="text-xs text-rs-error pl-1">{errors.email}</p>}
                         </div>
 

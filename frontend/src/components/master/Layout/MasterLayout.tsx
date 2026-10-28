@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import { getActiveTenant } from '@/lib/supabase';
 import { LocalBridgeSyncService, type NetworkHealthStatus } from '@/services/LocalBridgeSyncService';
 import { useNavigate } from 'react-router-dom';
 import { NotificationCenter } from '@/components/shared/NotificationCenter';
@@ -341,6 +342,19 @@ export function MasterLayout() {
                 <><WifiOff className="h-3.5 w-3.5" /> <span className="font-medium hidden sm:inline">Cloud Unreachable</span></>
               )}
             </div>
+            {/* Active Organization Badge with subtle fade-in */}
+            {(() => {
+              const activeTenant = getActiveTenant();
+              return activeTenant ? (
+                <div 
+                  className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/60 border border-border/80 text-xs font-semibold text-foreground animate-in fade-in duration-300"
+                  title={`Organisation: ${activeTenant.name}`}
+                >
+                  <span className="w-2 h-2 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: activeTenant.accentColor }} />
+                  <span className="font-bold tracking-tight">{activeTenant.shortName}</span>
+                </div>
+              ) : null;
+            })()}
             <StoreMultiSelector />
             <HardwareStatus />
             <CurrencySwitcher />
