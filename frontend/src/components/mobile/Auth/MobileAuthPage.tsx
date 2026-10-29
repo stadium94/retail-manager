@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Mail, Lock, User, ArrowRight, UserPlus } from 'lucide-react';
 import logoUrl from '@/assets/logo.png';
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher';
 import { predictTenantByEmail, lookupTenantByEmail, REGISTERED_TENANTS, type TenantConfig } from '@/lib/tenants';
@@ -128,7 +128,7 @@ export function MobileAuthPage({
                         <div className="flex flex-col gap-1">
                             <label className="text-xs text-rs-on-surface-variant pl-1" htmlFor="email">{t('auth.email')}</label>
                             <div className="relative">
-                                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70 text-[20px]">mail</span>
+                                <Mail className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70" />
                                 <input
                                     className={`w-full h-[48px] bg-rs-surface-container-lowest border ${errors.email ? 'border-rs-error' : 'border-rs-outline/50'} rounded-lg pl-10 pr-4 text-rs-on-surface placeholder:text-rs-on-surface-variant/50 focus:outline-none focus:border-rs-primary focus:ring-1 focus:ring-rs-primary transition-all duration-200`}
                                     id="email"
@@ -152,7 +152,7 @@ export function MobileAuthPage({
                         <div className="flex flex-col gap-1">
                             <label className="text-xs text-rs-on-surface-variant pl-1" htmlFor="password">{t('auth.password')}</label>
                             <div className="relative">
-                                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70 text-[20px]">lock</span>
+                                <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70" />
                                 <input
                                     className={`w-full h-[48px] bg-rs-surface-container-lowest border ${errors.password ? 'border-rs-error' : 'border-rs-outline/50'} rounded-lg pl-10 pr-4 text-rs-on-surface placeholder:text-rs-on-surface-variant/50 focus:outline-none focus:border-rs-primary focus:ring-1 focus:ring-rs-primary transition-all duration-200`}
                                     id="password"
@@ -186,7 +186,7 @@ export function MobileAuthPage({
                             ) : (
                                 <>
                                     <span>{t('auth.signIn')}</span>
-                                    <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+                                    <ArrowRight className="w-5 h-5 ml-1" />
                                 </>
                             )}
                         </button>
@@ -197,7 +197,7 @@ export function MobileAuthPage({
                         <div className="flex flex-col gap-1">
                             <label className="text-xs text-rs-on-surface-variant pl-1" htmlFor="signup-name">{t('auth.fullName')}</label>
                             <div className="relative">
-                                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70 text-[20px]">person</span>
+                                <User className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70" />
                                 <input
                                     className={`w-full h-[48px] bg-rs-surface-container-lowest border ${errors.fullName ? 'border-rs-error' : 'border-rs-outline/50'} rounded-lg pl-10 pr-4 text-rs-on-surface placeholder:text-rs-on-surface-variant/50 focus:outline-none focus:border-rs-primary focus:ring-1 focus:ring-rs-primary transition-all duration-200`}
                                     id="signup-name"
@@ -215,7 +215,7 @@ export function MobileAuthPage({
                         <div className="flex flex-col gap-1">
                             <label className="text-xs text-rs-on-surface-variant pl-1" htmlFor="signup-email">{t('auth.email')}</label>
                             <div className="relative">
-                                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70 text-[20px]">mail</span>
+                                <Mail className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70" />
                                 <input
                                     className={`w-full h-[48px] bg-rs-surface-container-lowest border ${errors.email ? 'border-rs-error' : 'border-rs-outline/50'} rounded-lg pl-10 pr-4 text-rs-on-surface placeholder:text-rs-on-surface-variant/50 focus:outline-none focus:border-rs-primary focus:ring-1 focus:ring-rs-primary transition-all duration-200`}
                                     id="signup-email"
@@ -239,7 +239,7 @@ export function MobileAuthPage({
                         <div className="flex flex-col gap-1">
                             <label className="text-xs text-rs-on-surface-variant pl-1" htmlFor="signup-password">{t('auth.password')}</label>
                             <div className="relative">
-                                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70 text-[20px]">lock</span>
+                                <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70" />
                                 <input
                                     className={`w-full h-[48px] bg-rs-surface-container-lowest border ${errors.password ? 'border-rs-error' : 'border-rs-outline/50'} rounded-lg pl-10 pr-4 text-rs-on-surface placeholder:text-rs-on-surface-variant/50 focus:outline-none focus:border-rs-primary focus:ring-1 focus:ring-rs-primary transition-all duration-200`}
                                     id="signup-password"
@@ -257,7 +257,7 @@ export function MobileAuthPage({
                         <div className="flex flex-col gap-1">
                             <label className="text-xs text-rs-on-surface-variant pl-1" htmlFor="signup-confirm">{t('auth.confirmPassword')}</label>
                             <div className="relative">
-                                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70 text-[20px]">lock</span>
+                                <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-rs-on-surface-variant/70" />
                                 <input
                                     className={`w-full h-[48px] bg-rs-surface-container-lowest border ${errors.confirmPassword ? 'border-rs-error' : 'border-rs-outline/50'} rounded-lg pl-10 pr-4 text-rs-on-surface placeholder:text-rs-on-surface-variant/50 focus:outline-none focus:border-rs-primary focus:ring-1 focus:ring-rs-primary transition-all duration-200`}
                                     id="signup-confirm"
@@ -284,7 +284,7 @@ export function MobileAuthPage({
                             ) : (
                                 <>
                                     <span>{t('auth.createAccount')}</span>
-                                    <span className="material-symbols-outlined text-[20px]">person_add</span>
+                                    <UserPlus className="w-5 h-5 ml-1" />
                                 </>
                             )}
                         </button>

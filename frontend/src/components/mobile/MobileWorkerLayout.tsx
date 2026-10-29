@@ -14,6 +14,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { ShoppingCart, BarChart3, Menu, ArrowLeft } from 'lucide-react';
 import { MobilePOS } from './POS/MobilePOS';
 import { MobileDashboard } from './Dashboard/MobileDashboard';
 import { MobileMenuScreen } from './MobileMenuScreen';
@@ -53,16 +54,16 @@ export interface TabConfig {
   id: MobileTab;
   /** Label shown below the icon */
   label: string;
-  /** Material Symbols icon name */
-  icon: string;
+  /** Lucide icon component */
+  icon: React.ComponentType<{ className?: string; size?: number }>;
 }
 
 // ─── Tab definitions ─────────────────────────────────────────────────────────
 
 const ALL_TABS: TabConfig[] = [
-  { id: 'pos',       label: 'Caisse',  icon: 'point_of_sale' },
-  { id: 'dashboard', label: 'Tableau', icon: 'bar_chart'     },
-  { id: 'menu',      label: 'Menu',    icon: 'menu'          },
+  { id: 'pos',       label: 'Caisse',  icon: ShoppingCart },
+  { id: 'dashboard', label: 'Tableau', icon: BarChart3    },
+  { id: 'menu',      label: 'Menu',    icon: Menu         },
 ];
 
 const STORAGE_KEY = 'worker_mobile_active_tab';
@@ -95,6 +96,7 @@ export function MobileBottomTabRow({
     >
       {tabs.map(tab => {
         const isActive = activeTab === tab.id;
+        const TabIcon = tab.icon;
 
         return (
           <button
@@ -121,18 +123,7 @@ export function MobileBottomTabRow({
                 isActive ? 'bg-rs-secondary-container' : 'bg-transparent',
               ].join(' ')}
             >
-              <span
-                className="material-symbols-outlined"
-                style={{
-                  fontSize: 24,
-                  // FILL 1 = filled icon when active; FILL 0 = outlined otherwise
-                  fontVariationSettings: isActive
-                    ? "'FILL' 1, 'wght' 400"
-                    : "'FILL' 0, 'wght' 400",
-                }}
-              >
-                {tab.icon}
-              </span>
+              <TabIcon className="w-5 h-5" />
             </div>
 
             <span className="text-[10px] font-medium leading-none tracking-tight">
@@ -225,7 +216,7 @@ export function MobileWorkerLayout({ onOpenDesktopModule }: MobileWorkerLayoutPr
       <div className="flex flex-col h-full bg-[#0a0a0a] pb-[64px] md:pb-0 font-sans text-white">
         <header className="flex-shrink-0 bg-[#141414] border-b border-rs-surface-container-highest px-4 py-3 sticky top-0 z-10 flex items-center gap-2">
           <button onClick={() => setActiveMobileModule(null)} className="p-2 -ml-2 rounded-full hover:bg-rs-surface-container-highest text-white active:scale-95 transition-transform">
-            <span className="material-symbols-outlined">arrow_back</span>
+            <ArrowLeft className="w-5 h-5 text-white" />
           </button>
           <h1 className="text-lg font-bold text-white uppercase tracking-wider">{title}</h1>
         </header>
@@ -242,7 +233,7 @@ export function MobileWorkerLayout({ onOpenDesktopModule }: MobileWorkerLayoutPr
       <div className="flex flex-col h-full bg-[#0a0a0a] pb-[64px] md:pb-0 font-sans text-white">
         <header className="flex-shrink-0 bg-[#141414] border-b border-rs-surface-container-highest px-4 py-3 sticky top-0 z-10 flex items-center gap-2">
           <button onClick={() => setActiveMobileModule(null)} className="p-2 -ml-2 rounded-full hover:bg-rs-surface-container-highest text-white active:scale-95 transition-transform">
-            <span className="material-symbols-outlined">arrow_back</span>
+            <ArrowLeft className="w-5 h-5 text-white" />
           </button>
           <h1 className="text-lg font-bold text-white uppercase tracking-wider">Besoins réappro.</h1>
         </header>
@@ -259,7 +250,7 @@ export function MobileWorkerLayout({ onOpenDesktopModule }: MobileWorkerLayoutPr
       <div className="flex flex-col h-full bg-[#0a0a0a] pb-[64px] md:pb-0 font-sans text-white">
         <header className="flex-shrink-0 bg-[#141414] border-b border-rs-surface-container-highest px-4 py-3 sticky top-0 z-10 flex items-center gap-2">
           <button onClick={() => setActiveMobileModule(null)} className="p-2 -ml-2 rounded-full hover:bg-rs-surface-container-highest text-white active:scale-95 transition-transform">
-            <span className="material-symbols-outlined">arrow_back</span>
+            <ArrowLeft className="w-5 h-5 text-white" />
           </button>
           <h1 className="text-lg font-bold text-white uppercase tracking-wider">{title}</h1>
         </header>
@@ -276,7 +267,7 @@ export function MobileWorkerLayout({ onOpenDesktopModule }: MobileWorkerLayoutPr
       <div className="flex flex-col h-full bg-[#0a0a0a] pb-[64px] md:pb-0 font-sans text-white">
         <header className="flex-shrink-0 bg-[#141414] border-b border-rs-surface-container-highest px-4 py-3 sticky top-0 z-10 flex items-center gap-2">
           <button onClick={() => setActiveMobileModule(null)} className="p-2 -ml-2 rounded-full hover:bg-rs-surface-container-highest text-white active:scale-95 transition-transform">
-            <span className="material-symbols-outlined">arrow_back</span>
+            <ArrowLeft className="w-5 h-5 text-white" />
           </button>
           <h1 className="text-lg font-bold text-white uppercase tracking-wider">{title}</h1>
         </header>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Mail, Lock, ArrowRight } from 'lucide-react';
 import logoUrl from '@/assets/logo.png';
 
 interface MobileAuthProps {
@@ -45,7 +45,7 @@ export function MobileAuth({ loginData, setLoginData, handleLogin, loading, erro
           <div className="flex flex-col gap-1">
             <label className="text-[13px] text-[#d5c4ae] pl-1" htmlFor="email">Email</label>
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#d5c4ae]/70 text-[20px]">mail</span>
+              <Mail className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-[#d5c4ae]/70" />
               <input 
                 className="w-full h-[48px] bg-[#130d06] border border-[#9e8e7a] rounded-lg pl-10 pr-4 text-[15px] text-[#ede1d3] placeholder:text-[#d5c4ae]/50 focus:outline-none focus:border-[#ffba41] focus:ring-1 focus:ring-[#ffba41] transition-all duration-200" 
                 id="email" 
@@ -63,7 +63,7 @@ export function MobileAuth({ loginData, setLoginData, handleLogin, loading, erro
           <div className="flex flex-col gap-1">
             <label className="text-[13px] text-[#d5c4ae] pl-1" htmlFor="password">Mot de passe</label>
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#d5c4ae]/70 text-[20px]">lock</span>
+              <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-[#d5c4ae]/70" />
               <input 
                 className="w-full h-[48px] bg-[#130d06] border border-[#9e8e7a] rounded-lg pl-10 pr-4 text-[15px] text-[#ede1d3] placeholder:text-[#d5c4ae]/50 focus:outline-none focus:border-[#ffba41] focus:ring-1 focus:ring-[#ffba41] transition-all duration-200" 
                 id="password" 
@@ -97,7 +97,7 @@ export function MobileAuth({ loginData, setLoginData, handleLogin, loading, erro
             ) : (
               <>
                 <span>Se connecter</span>
-                <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+                <ArrowRight className="w-5 h-5 ml-1" />
               </>
             )}
           </button>
