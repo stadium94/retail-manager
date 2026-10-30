@@ -63,6 +63,7 @@ export function WorkerLayout({ className }: WorkerLayoutProps) {
     return (localStorage.getItem('worker_active_module') as WorkerModule) || 'facturation-detail';
   });
   const [storeId, setStoreId] = useState<string>('');
+  const [storeName, setStoreName] = useState<string>('');
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Listen for viewport width to toggle collapsed state (matches mobile breakpoint)
