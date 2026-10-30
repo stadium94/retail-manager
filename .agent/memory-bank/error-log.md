@@ -62,3 +62,12 @@
 - Verification: `cargo check` in `src-tauri` passed with 0 errors. `npm run build` in `frontend` succeeded in 19.77s. Local bridge build succeeded.
 - Status: FIXED
 - Tags: tauri, rust, windows-build, cicd, multi-tenant, store-isolation
+
+### [2026-10-30] Deprecate and remove ALIMENTATION DAMOU SORETO tenant
+- Symptom: User requested to strip out the new "alimentation" business from the codebase.
+- Files involved: `frontend/src/lib/tenants.ts`
+- Root cause: Temporary organization added for testing; user confirmed no longer needed.
+- Fix applied: Removed `damousoreto` from `REGISTERED_TENANTS`. Kept clean multi-tenant isolation and Rust CI/CD fixes intact on `unify-stores`.
+- Verification: Grep across frontend confirmed 0 references. `npm run build` completed in 27.82s (exit code 0).
+- Status: FIXED
+- Tags: multi-tenant, cleanup, unify-stores
