@@ -6,6 +6,8 @@ import { WorkerStatusBar } from './WorkerStatusBar';
 import { cn } from '@/lib/utils';
 import { LocalDatabase } from '@/services/LocalDatabase';
 import { useTranslation } from 'react-i18next';
+import { LogOut } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Logger } from '@/utils/Logger';
 
 // Module views
@@ -61,7 +63,17 @@ export function WorkerLayout({ className }: WorkerLayoutProps) {
     return (localStorage.getItem('worker_active_module') as WorkerModule) || 'facturation-detail';
   });
   const [storeId, setStoreId] = useState<string>('');
-  const [storeName, setStoreName] = useState<string>('');
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Listen for viewport width to toggle collapsed state (matches mobile breakpoint)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const handler = (e: MediaQueryListEvent) => setIsCollapsed(e.matches);
+    setIsCollapsed(mq.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
 
   useEffect(() => {
     localStorage.setItem('worker_active_module', activeModule);
@@ -286,18 +298,32 @@ export function WorkerLayout({ className }: WorkerLayoutProps) {
 
   const layoutContent = (
     <div className={cn('h-full flex flex-col bg-background', className)}>
-      <header className="h-10 bg-[hsl(160,70%,35%)] flex items-center shrink-0 px-2">
-        <div className="h-7 w-7 shrink-0 overflow-hidden rounded bg-white/10 p-0.5 mr-2">
-          <img src={logoUrl} alt="Djati" className="h-full w-full object-contain" />
+      <header className="h-10 bg-[hsl(160,70%,35%)] flex items-center justify-between shrink-0 px-2">
+        <div className="flex items-center">
+          <div className="h-7 w-7 shrink-0 overflow-hidden rounded bg-white/10 p-0.5 mr-2">
+            <img src={logoUrl} alt="Djati" className="h-full w-full object-contain" />
+          </div>
+          <div className="text-white font-black text-xs uppercase tracking-tighter mr-4 border-r border-white/20 pr-4">
+            Djati
+          </div>
+          <span className="text-white font-medium text-sm mr-4">{storeName || t('index.title')}</span>
         </div>
-        <div className="text-white font-black text-xs uppercase tracking-tighter mr-4 border-r border-white/20 pr-4">
-          Djati
+        <div className="flex items-center gap-2">
+          <WorkerMenuBar
+            activeModule={activeModule}
+            onModuleChange={setActiveModule}
+            isMaster={isMaster}
+            isCollapsed={isCollapsed}
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className="h-6 px-2 text-primary-foreground hover:bg-primary-foreground/10 dark:text-foreground"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </Button>
         </div>
-        <WorkerMenuBar
-          activeModule={activeModule}
-          onModuleChange={setActiveModule}
-          isMaster={isMaster}
-        />
       </header>
 
       <main className="flex-1 overflow-hidden bg-[hsl(50,90%,55%)] dark:bg-background">

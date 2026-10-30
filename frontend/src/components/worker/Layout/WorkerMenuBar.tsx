@@ -59,6 +59,7 @@ interface WorkerMenuBarProps {
   onModuleChange: (module: WorkerModule) => void;
   className?: string;
   isMaster?: boolean;
+  isCollapsed?: boolean;
 }
 
 interface MenuItem {
@@ -76,7 +77,7 @@ interface MenuSection {
   items: MenuItem[];
 }
 
-export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaster = false }: WorkerMenuBarProps) {
+export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaster = false, isCollapsed = false }: WorkerMenuBarProps) {
   const { t } = useTranslation();
 
   const menuStructure: MenuSection[] = [
@@ -246,7 +247,7 @@ export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaste
           item.module === activeModule && 'bg-primary/20 text-primary'
         )}
       >
-        <span>{label}</span>
+        {!isCollapsed && <span>{label}</span>}
         {item.shortcut && (
           <span className="ml-auto text-xs text-muted-foreground">{item.shortcut}</span>
         )}
