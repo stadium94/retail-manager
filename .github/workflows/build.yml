@@ -106,7 +106,17 @@ jobs:
         with:
           args: --target x86_64-pc-windows-msvc
 
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: retail-manager-windows-x64
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if-no-files-found: warn
+
       - name: Publish installer to stadium94/app-releases
+        continue-on-error: true
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.STADIUM94_RELEASE_TOKEN }}
@@ -168,5 +178,5 @@ jobs:
           git remote add origin $remoteUrl
           git add -A
           git commit -q -m "Automated build from ${{ github.repository }} @ ${{ github.sha }} (run ${{ github.run_number }})"
-          git push origin "HEAD:$branch"
+          git push --force origin "HEAD:$branch"
           Pop-Location
