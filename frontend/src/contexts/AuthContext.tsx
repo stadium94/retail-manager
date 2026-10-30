@@ -1107,6 +1107,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null);
       setRoles([]);
 
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('worker_store_id');
+        localStorage.removeItem('worker_store_name');
+        localStorage.removeItem('worker_active_module');
+      }
+
       await supabase.auth.signOut().catch(e => console.warn('[AuthContext] Failed to sign out of Supabase client:', e));
       
       toast({
@@ -1121,6 +1127,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setSession(null);
       setRoles([]);
+
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('worker_store_id');
+        localStorage.removeItem('worker_store_name');
+        localStorage.removeItem('worker_active_module');
+      }
 
       if (!dataClient.isLocalFirst) {
         supabase.auth.signOut().catch(() => {});

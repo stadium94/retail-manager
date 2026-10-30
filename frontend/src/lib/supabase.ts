@@ -55,9 +55,15 @@ export function getActiveTenantSupabaseUrl(): string {
 
 export function setActiveTenant(tenantId: string): void {
   if (REGISTERED_TENANTS[tenantId]) {
+    const prev = activeTenantId;
     activeTenantId = tenantId;
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, tenantId);
+      if (prev && prev !== tenantId) {
+        localStorage.removeItem('worker_store_id');
+        localStorage.removeItem('worker_store_name');
+        localStorage.removeItem('worker_active_module');
+      }
     }
     console.log(`🏢 [MultiTenant] Active tenant switched to: ${REGISTERED_TENANTS[tenantId].name} (${tenantId})`);
   }

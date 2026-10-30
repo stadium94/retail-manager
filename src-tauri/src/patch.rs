@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tauri::AppHandle;
 use dirs_next::data_local_dir;
 use crate::license::check_license_gate;

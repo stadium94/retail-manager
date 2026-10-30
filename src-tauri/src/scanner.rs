@@ -19,7 +19,7 @@ pub async fn start_hardware_scan_listener<R: Runtime>(app: AppHandle<R>) -> Resu
     // let port = serialport::new("/dev/ttyUSB0", 9600).open().expect("Failed to open port");
     
     // For now, we simulate a background listener that "detects" a scanner
-    let app_clone = app.clone();
+    let _app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
         // Simulate waiting for a hardware scan event
         loop {

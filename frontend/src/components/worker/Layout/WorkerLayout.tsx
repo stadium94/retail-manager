@@ -133,21 +133,19 @@ export function WorkerLayout({ className }: WorkerLayoutProps) {
       if (!user) return;
 
       let foundStoreId = user?.user_metadata?.store_id || '';
-      let foundStoreName = '';
+      let foundStoreName = user?.user_metadata?.store_name || '';
 
-      // Try to resolve store name from local bridge or cache
-      if (foundStoreId) {
-        const cachedStoreName = localStorage.getItem('worker_store_name');
-        if (cachedStoreName) foundStoreName = cachedStoreName;
+      const cachedStoreId = localStorage.getItem('worker_store_id');
+      const cachedStoreName = localStorage.getItem('worker_store_name');
+
+      // Try to resolve store name from cache if matching store ID
+      if (foundStoreId && !foundStoreName && cachedStoreId === foundStoreId && cachedStoreName) {
+        foundStoreName = cachedStoreName;
       }
 
-      if (!foundStoreId) {
-        const cachedStoreId = localStorage.getItem('worker_store_id');
-        const cachedStoreName = localStorage.getItem('worker_store_name');
-        if (cachedStoreId) {
-          foundStoreId = cachedStoreId;
-          foundStoreName = cachedStoreName || '';
-        }
+      if (!foundStoreId && cachedStoreId) {
+        foundStoreId = cachedStoreId;
+        foundStoreName = cachedStoreName || '';
       }
 
       if (foundStoreId && !foundStoreName) {

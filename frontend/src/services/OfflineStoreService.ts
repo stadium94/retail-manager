@@ -409,6 +409,13 @@ export class OfflineStoreService {
   }
 
   private static async cacheRemoteStores(remoteStores: any[], localStores: LocalStore[]) {
+    const remoteIds = new Set((remoteStores || []).map((s) => s.id));
+    for (const ls of localStores) {
+      if (ls.synced && !remoteIds.has(ls.id)) {
+        await LocalDatabase.deleteStore(ls.id).catch(() => {});
+      }
+    }
+
     for (const store of remoteStores || []) {
       const existingLocal = localStores.find((ls) => ls.id === store.id);
       // Never overwrite local unsynced edits

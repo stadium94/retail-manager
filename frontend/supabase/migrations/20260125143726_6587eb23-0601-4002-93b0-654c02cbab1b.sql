@@ -6,7 +6,10 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT * FROM public.get_user_stores(_user_id);
+  SELECT store_id FROM public.user_roles
+  WHERE user_id = _user_id AND store_id IS NOT NULL
+  UNION
+  SELECT id FROM public.stores WHERE owner_id = _user_id;
 $$;
 
 -- =============================

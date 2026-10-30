@@ -1,11 +1,9 @@
 use serde::{Serialize, Deserialize};
 use machine_uid;
 use sha2::{Sha256, Digest};
-use hex;
 use std::fs;
 use std::path::PathBuf;
-use tauri::AppHandle;
-use tauri::Manager;
+use tauri::{AppHandle, Manager, Runtime};
 use ed25519_dalek::{Verifier, VerifyingKey, Signature};
 use base32;
 use aes_gcm::{
@@ -88,19 +86,19 @@ pub fn get_device_hash() -> String {
     }
 }
 
-fn get_license_path(app_handle: &AppHandle) -> PathBuf {
+fn get_license_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
     let mut path = app_handle.path().app_data_dir().unwrap_or_default();
     path.push("license.bin"); // Changed extension to .bin for binary
     path
 }
 
-fn get_install_date_path(app_handle: &AppHandle) -> PathBuf {
+fn get_install_date_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
     let mut path = app_handle.path().app_data_dir().unwrap_or_default();
     path.push("app_installed_date.json");
     path
 }
 
-fn get_last_run_path(app_handle: &AppHandle) -> PathBuf {
+fn get_last_run_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
     let mut path = app_handle.path().app_data_dir().unwrap_or_default();
     path.push("last_run.bin");
     path
@@ -173,7 +171,11 @@ pub fn verify_signature(key: &str, device_id: &str) -> Result<bool, String> {
         return Err("Invalid signature length.".to_string());
     }
 
-    let signature = Signature::from_bytes(signature_bytes.try_into().unwrap());
+    let sig_arr: [u8; 64] = signature_bytes
+        .try_into()
+        .map_err(|_| "Invalid signature length.".to_string())?;
+
+    let signature = Signature::from_bytes(&sig_arr);
     
     // Verify
     // Handle all-zero placeholder key
@@ -206,7 +208,7 @@ pub fn get_device_hash_command() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn get_license_status_command(app_handle: AppHandle) -> Result<LicenseStatus, String> {
+pub fn get_license_status_command<R: Runtime>(app_handle: AppHandle<R>) -> Result<LicenseStatus, String> {
     let device_hash = get_device_hash();
     let license_path = get_license_path(&app_handle);
     let last_run_path = get_last_run_path(&app_handle);
@@ -311,7 +313,7 @@ pub fn get_license_status_command(app_handle: AppHandle) -> Result<LicenseStatus
 
 /// Gatekeeper: Check if the license is valid (Active or Trial)
 /// Returns Error if license is expired or tampered.
-pub fn check_license_gate(app_handle: &AppHandle) -> Result<(), String> {
+pub fn check_license_gate<R: Runtime>(app_handle: &AppHandle<R>) -> Result<(), String> {
     let status = get_license_status_command(app_handle.clone())?;
     if status.status == "active" || status.status == "trial" {
         Ok(())
@@ -323,7 +325,7 @@ pub fn check_license_gate(app_handle: &AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn activate_license_command(app_handle: AppHandle, key: String, store_name: String) -> Result<(), String> {
+pub fn activate_license_command<R: Runtime>(app_handle: AppHandle<R>, key: String, store_name: String) -> Result<(), String> {
     let device_hash = get_device_hash();
     
     // 1. Verify Cryptography
