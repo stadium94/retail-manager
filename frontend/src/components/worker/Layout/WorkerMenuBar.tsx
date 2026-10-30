@@ -73,6 +73,7 @@ interface MenuItem {
 
 interface MenuSection {
   triggerKey: string;
+  triggerInitial: string;
   highlight?: boolean;
   items: MenuItem[];
 }
@@ -83,6 +84,7 @@ export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaste
   const menuStructure: MenuSection[] = [
     {
       triggerKey: 'menu.sales.trigger',
+      triggerInitial: 'V',
       highlight: true,
               items: [
                 { labelKey: 'menu.sales.retail', module: 'vente-detail' },
@@ -97,6 +99,7 @@ export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaste
     },
     {
       triggerKey: 'menu.purchases.trigger',
+      triggerInitial: 'A',
       items: [
         { labelKey: 'menu.purchases.reception', module: 'reception-achats' },
         { labelKey: 'menu.purchases.autoOrder', module: 'commande-auto' },
@@ -107,6 +110,7 @@ export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaste
     },
     {
       triggerKey: 'menu.files.trigger',
+      triggerInitial: 'F',
       items: [
         { labelKey: 'menu.files.products', module: 'produits' },
         { labelKey: 'menu.files.clients', module: 'clients' },
@@ -117,6 +121,7 @@ export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaste
     },
     {
       triggerKey: 'menu.edition.trigger',
+      triggerInitial: 'E',
       items: [
         {
           labelKey: 'menu.edition.clientStatus',
@@ -150,6 +155,7 @@ export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaste
     },
     {
       triggerKey: 'menu.management.trigger',
+      triggerInitial: 'G',
       items: [
         { labelKey: 'menu.management.cashConsultation', module: 'consultation-caisse' },
         { labelKey: 'menu.management.cashJournal', module: 'journal-caisse' },
@@ -162,6 +168,7 @@ export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaste
     },
     {
       triggerKey: 'menu.stock.trigger',
+      triggerInitial: 'S',
       items: [
         { labelKey: 'menu.stock.productSheet', module: 'fiche-stock' },
         { labelKey: 'menu.stock.movements', module: 'mouvements-stock' },
@@ -175,6 +182,7 @@ export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaste
     },
     {
       triggerKey: 'menu.program.trigger',
+      triggerInitial: 'P',
       items: [
         { labelKey: 'menu.program.preferences', module: 'preferences' },
         { labelKey: 'menu.program.keyProgramming', module: 'programmation-touches' },
@@ -271,7 +279,7 @@ export function WorkerMenuBar({ activeModule, onModuleChange, className, isMaste
                 !section.highlight && !isActive && 'hover:bg-muted'
               )}
             >
-              {t(section.triggerKey)}
+              {isCollapsed ? section.triggerInitial : t(section.triggerKey)}
             </MenubarTrigger>
             <MenubarContent
               className="glass-card border-primary/20 min-w-[220px] animate-spring-in"

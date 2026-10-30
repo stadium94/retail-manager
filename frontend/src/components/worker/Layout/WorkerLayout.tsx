@@ -299,23 +299,30 @@ export function WorkerLayout({ className }: WorkerLayoutProps) {
 
   const layoutContent = (
     <div className={cn('h-full flex flex-col bg-background', className)}>
-      <header className="h-10 bg-[hsl(160,70%,35%)] flex items-center justify-between shrink-0 px-2">
-        <div className="flex items-center">
+      <header className="h-10 bg-[hsl(160,70%,35%)] flex items-center shrink-0 px-2">
+        {/* LEFT — store identity, always anchored */}
+        <div className="flex items-center shrink-0 min-w-0">
           <div className="h-7 w-7 shrink-0 overflow-hidden rounded bg-white/10 p-0.5 mr-2">
             <img src={logoUrl} alt="Djati" className="h-full w-full object-contain" />
           </div>
-          <div className="text-white font-black text-xs uppercase tracking-tighter mr-4 border-r border-white/20 pr-4">
+          <div className="text-white font-black text-xs uppercase tracking-tighter mr-3 border-r border-white/20 pr-3 shrink-0">
             Djati
           </div>
-          <span className="text-white font-medium text-sm mr-4">{storeName || t('index.title')}</span>
+          <span className="text-white font-medium text-sm truncate max-w-[160px]">{storeName || t('index.title')}</span>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* CENTER — menu bar fills remaining space */}
+        <div className="flex-1 flex justify-center overflow-hidden">
           <WorkerMenuBar
             activeModule={activeModule}
             onModuleChange={setActiveModule}
             isMaster={isMaster}
             isCollapsed={isCollapsed}
           />
+        </div>
+
+        {/* RIGHT — logout always anchored */}
+        <div className="shrink-0">
           <Button
             variant="ghost"
             size="sm"

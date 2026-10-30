@@ -29,6 +29,15 @@ export const REGISTERED_TENANTS: Record<string, TenantConfig> = {
     accentColor: '#0f172a',
     logoUrl: '/holding-pro-logo.png',
     knownDomains: ['holding-pro.com', 'holdingpro.com', 'niamana.com']
+  },
+  damousoreto: {
+    id: 'damousoreto',
+    name: 'ALIMENTATION DAMOU SORETO',
+    shortName: 'DAMOU SORETO',
+    supabaseUrl: 'https://eglfssqkteykmvqlixtw.supabase.co',
+    supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnbGZzc3FrdGV5a212cWxpeHR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzNjc0NTQsImV4cCI6MjEwODk0MzQ1NH0.1m7uk686ugALoRnteNF4gh7emm0QpqlIfiWIcphBf-k',
+    accentColor: '#16a34a',
+    knownDomains: ['damousoreto.com', 'alimentation-damou.com']
   }
 };
 
