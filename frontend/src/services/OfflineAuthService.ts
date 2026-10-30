@@ -11,7 +11,7 @@ import { TokenManager } from '@/utils/tokenManager';
 import { smartFetch } from '@/lib/dataClient';
 import i18n from '@/i18n/config';
 import { createClient } from '@supabase/supabase-js';
-import { supabase, FALLBACK_SUPABASE_URL, FALLBACK_SUPABASE_ANON_KEY } from '../lib/supabase';
+import { supabase, getActiveTenant, getActiveTenantSupabaseUrl } from '../lib/supabase';
 
 /** Minimal User type replacing @supabase/supabase-js User */
 export interface User {
@@ -85,7 +85,7 @@ export class OfflineAuthService {
   private static getLocalBridgeBaseUrl(): string {
     const dc = getDataClient();
     if (!dc.isLocalFirst) {
-      return (import.meta.env.VITE_SUPABASE_URL || 'https://fpvrbxmbrotowdlyebqv.supabase.co').replace(/\/$/, '');
+      return getActiveTenantSupabaseUrl().replace(/\/$/, '');
     }
     return dc.localBridgeBaseUrl;
   }
@@ -926,10 +926,11 @@ export class OfflineAuthService {
   static async getAuthHeaders(): Promise<Record<string, string> | null> {
     const dc = getDataClient();
     if (!dc.isLocalFirst) {
+      const activeTenant = getActiveTenant();
       const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+      const token = session?.access_token || activeTenant.supabaseAnonKey;
       return {
-        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+        'apikey': activeTenant.supabaseAnonKey,
         'Authorization': `Bearer ${token}`
       };
     }
@@ -1041,9 +1042,10 @@ export class OfflineAuthService {
 
     if (navigator.onLine) {
       try {
+        const activeTenant = getActiveTenant();
         const verifyClient = createClient(
-          (import.meta.env.VITE_SUPABASE_URL as string) || FALLBACK_SUPABASE_URL,
-          (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || FALLBACK_SUPABASE_ANON_KEY,
+          activeTenant.supabaseUrl,
+          activeTenant.supabaseAnonKey,
           { auth: { autoRefreshToken: false, persistSession: false } }
         );
         const { error: verifyErr } = await verifyClient.auth.signInWithPassword({

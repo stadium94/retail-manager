@@ -1,3 +1,5 @@
+import { getActiveTenantSupabaseUrl } from '@/lib/supabase';
+
 type Message = { role: "user" | "assistant"; content: string };
 
 export interface Suggestion {
@@ -12,7 +14,7 @@ export interface Suggestion {
 
 export class AIService {
   private static resolveUrl(path: string): string | null {
-    const base = import.meta.env.VITE_SUPABASE_URL || "https://fpvrbxmbrotowdlyebqv.supabase.co";
+    const base = getActiveTenantSupabaseUrl();
     if (!base) return null;
     return `${base.replace(/\/$/, '')}${path}`;
   }

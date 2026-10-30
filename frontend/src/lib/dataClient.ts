@@ -1,6 +1,7 @@
+import { getActiveTenantSupabaseUrl } from './supabase';
+
 export type AppMode = 'cloud' | 'hybrid' | 'offline';
 
-const FALLBACK_SUPABASE_URL = "https://fpvrbxmbrotowdlyebqv.supabase.co";
 const localBridgeBaseUrl = (import.meta.env.VITE_LOCALBRIDGE_URL || 'http://127.0.0.1:8787').replace(/\/$/, '');
 
 export interface DataClient {
@@ -43,7 +44,7 @@ export function getDataClient(): DataClient {
   const localFirst = !android && (!isHttps || tauri) && !forceCloud;
   const baseUrl = localFirst 
     ? localBridgeBaseUrl 
-    : (import.meta.env.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL).replace(/\/$/, '');
+    : getActiveTenantSupabaseUrl().replace(/\/$/, '');
 
   console.log(
     `🔑 [DataClient] mode: offline, isLocalFirst: ${localFirst}, android: ${android}, isHttps: ${isHttps}, tauri: ${tauri}, baseUrl: ${baseUrl}`
@@ -140,9 +141,9 @@ if (typeof window !== 'undefined' && !(window as any).__fetch_patched__) {
     const dc = getDataClient();
     if (!dc.isLocalFirst) {
       let urlStr = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as any).url);
-      const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL).replace(/\/$/, '');
+      const supabaseUrl = getActiveTenantSupabaseUrl().replace(/\/$/, '');
       
-      if (urlStr.startsWith(supabaseUrl)) {
+      if (urlStr.startsWith(supabaseUrl) || urlStr.includes('.supabase.co')) {
         let modified = false;
         
         // 1. Rewrite path parameters for single rows: /rest/v1/table/UUID -> /rest/v1/table?id=eq.UUID
